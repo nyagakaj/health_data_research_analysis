@@ -292,64 +292,187 @@ if en_file and fr_file:
         )
         st.plotly_chart(fig6, use_container_width=True)
     
-    # ─── Tab 7: Stakeholders ────────────────────────────────────────
+    # ─── Tab 7: Stakeholder Mapping ────────────────────────────────────────
     with tabs[6]:
         st.header("7. Stakeholder Mapping")
-        collab_cols = [c for c in df.columns if re.search(r"entity|collabor", c, re.I)]
-        orgs = (
-            df[collab_cols]
-            .astype(str)
-            .stack()
-            .str.split(';')
-            .explode()
-            .str.strip()
-            .value_counts()
-            .head(20)
-            .rename_axis("Organization")
-            .reset_index(name="Count")
-        )
-        st.table(orgs)
-        st.download_button(
-            "Download collaborators list",
-            orgs.to_csv(index=False),
-            "collaborators.csv",
-            "text/csv"
-        )
+
+        # define which survey questions we’re using
+        stakeholder_info = {
+            'Research Collaborations': {
+                'indicator': "National, regional, international research and continental collaborations",
+                'detail':    "If yes, list the research collaborations in the last 5 years"
+            }
+            # you could add more categories here if needed
+        }
+
+        yes_vals = {'yes','oui','checked','true','1'}
+        rows = []
+        # for each category, scan every row
+        for category, cols in stakeholder_info.items():
+            ind_col = cols['indicator']
+            det_col = cols['detail']
+            if ind_col not in df.columns or det_col not in df.columns:
+                continue
+            for _, r in df.iterrows():
+                if str(r.get(ind_col,"")).strip().lower() in yes_vals and str(r.get(det_col,"")).strip():
+                    parts = re.split(r'[;,\\n]+', r[det_col])
+                    for p in parts:
+                        p = p.strip()
+                        if p:
+                            rows.append({
+                                'Country':      r['Country'],
+                                'Site':         r[name_col],
+                                'Category':     category,
+                                'Stakeholder':  p
+                            })
+
+        # build a DataFrame and drop duplicates
+        stake_df = pd.DataFrame(rows).drop_duplicates()
+
+        if stake_df.empty:
+            st.info("No stakeholders found under the specified questions.")
+        else:
+            # pivot to wide form: one row per Site, columns for each category
+            pivot = (
+                stake_df
+                  .groupby(['Country','Site','Category'])['Stakeholder']
+                  .apply(lambda lst: "; ".join(sorted(set(lst))))
+                  .unstack(fill_value="")
+                  .reset_index()
+            )
+
+            st.subheader("Stakeholders by Site & Category")
+            st.table(pivot)
+
+            st.download_button(
+                "Download stakeholders list (CSV)",
+                pivot.to_csv(index=False),
+                "stakeholders_by_site.csv",
+                "text/csv"
+            )
+
+            # optional: top‐20 stakeholder frequency bar chart
+            top = (
+                stake_df['Stakeholder']
+                .value_counts()
+                .head(20)
+                .reset_index()
+                .rename(columns={'index':'Stakeholder','Stakeholder':'Count'})
+            )
+            fig7 = px.bar(
+                top, x='Count', y='Stakeholder', orientation='h',
+                title="Top 20 Stakeholders Across All Sites",
+                labels={'Count':'Mentions','Stakeholder':''}
+            )
+            st.plotly_chart(fig7, use_container_width=True)
+
     
-    # ─── Tab 8: Policy & Legislation ───────────────────────────────
+        # ─── Tab 8: Policy & Legislation ───────────────────────────────
     with tabs[7]:
         st.header("8. Policy & Legislation")
-        pcols = {t: [c for c in df.columns if t in c.lower()] for t in ['law','priority','gdp','budget']}
-        law = (
-            df.groupby('Country')[pcols['law']].first()
-              .eq('Yes').any(axis=1)
-              .astype(int)
-              .reset_index(name='HasLaw')
+
+        # 1. Identify policy & legislation columns by keyword
+        existence_cols = [
+            c for c in df.columns
+            if re.search(r'\b(policy exists|legislation)\b', c, re.IGNORECASE)
+        ]
+        implementation_cols = [
+            c for c in df.columns
+            if re.search(r'\b(implementation|monitoring)\b', c, re.IGNORECASE)
+        ]
+        budget_cols = [
+            c for c in df.columns
+            if re.search(r'percentage of the national health budget', c, re.IGNORECASE)
+        ]
+        sop_cols = [
+            c for c in df.columns
+            if re.search(r'available sops', c, re.IGNORECASE)
+        ]
+
+        # 2. Harmonize yes/no to binary
+        yes_vals = {'yes', 'oui', 'checked'}
+        def to_binary(v):
+            return 1 if str(v).strip().lower() in yes_vals else 0
+
+        # 3. Compute per‐site sub‐scores 0–1
+        scores = pd.DataFrame(index=df.index)
+        # existence
+        if existence_cols:
+            scores['Existence'] = df[existence_cols].applymap(to_binary).max(axis=1)
+        else:
+            scores['Existence'] = 0
+        # implementation
+        if implementation_cols:
+            scores['Implementation'] = df[implementation_cols].applymap(to_binary).max(axis=1)
+        else:
+            scores['Implementation'] = 0
+        # budget
+        if budget_cols:
+            pct = df[budget_cols[0]].astype(str).str.rstrip('%') \
+                     .replace('', '0').astype(float).fillna(0)
+            scores['Budget'] = pct.clip(0,100) / 100
+        else:
+            scores['Budget'] = 0
+        # SOP coverage
+        if sop_cols:
+            sop_binary = df[sop_cols].applymap(lambda v: 1 if str(v).strip().lower()=='checked' else 0)
+            scores['SOP_Coverage'] = sop_binary.sum(axis=1) / len(sop_cols)
+        else:
+            scores['SOP_Coverage'] = 0
+
+        # 4. Composite policy & capacity score (equal weights)
+        weights = {
+            'Existence':      0.25,
+            'Implementation': 0.25,
+            'Budget':         0.25,
+            'SOP_Coverage':   0.25
+        }
+        scores['Policy_Capacity'] = sum(scores[k] * w for k,w in weights.items())
+
+        # 5. Attach back to df
+        df = pd.concat([df, scores], axis=1)
+
+        # 6. Country‐level summary
+        country_summary = (
+            df
+            .groupby('Country')
+            .agg(
+                Existence       = ('Existence',      'mean'),
+                Implementation  = ('Implementation', 'mean'),
+                Budget          = ('Budget',         'mean'),
+                SOP_Coverage    = ('SOP_Coverage',   'mean'),
+                Policy_Capacity = ('Policy_Capacity','mean'),
+                Num_Sites       = ('Country',        'count')
+            )
+            .round(3)
+            .reset_index()
         )
-        pr = (
-            df.groupby('Country')[pcols['priority']].first()
-              .eq('Yes').any(axis=1)
-              .astype(int)
-              .reset_index(name='HasPriority')
+
+        st.subheader("Country‐level Policy & Legislation Summary")
+        st.table(country_summary.set_index('Country'))
+
+        # 7. Visualization
+        melt8 = country_summary.melt(
+            id_vars='Country',
+            value_vars=['Existence','Implementation','Budget','SOP_Coverage','Policy_Capacity'],
+            var_name='Metric',
+            value_name='Value'
         )
-        gdp = pd.to_numeric(
-            df.groupby('Country')[pcols['gdp'][0]].first(),
-            errors='coerce'
-        ).reset_index(name='GDP%')
-        bud = pd.to_numeric(
-            df.groupby('Country')[pcols['budget'][0]].first(),
-            errors='coerce'
-        ).reset_index(name='Budget%')
-        pol = law.merge(pr, on='Country').merge(gdp, on='Country').merge(bud, on='Country')
-        st.table(pol.set_index('Country'))
-        melt8 = pol.melt(id_vars='Country', var_name='Metric', value_name='Value')
         fig8 = px.bar(
-            melt8, x='Country', y='Value', color='Metric', barmode='group',
-            title="Policy & Budget Metrics"
+            melt8,
+            x='Country',
+            y='Value',
+            color='Metric',
+            barmode='group',
+            title="Policy & Legislation Metrics by Country",
+            labels={'Value':'Score (0–1)'}
         )
         st.plotly_chart(fig8, use_container_width=True)
-    
-    progress.progress(100)
 
-else:
-    st.info("Please upload **both** an English and a French CSV to begin.")
+        # 8. Download summary
+        st.download_button(
+            "Download Policy Summary (CSV)",
+            country_summary.to_csv(index=False),
+            "policy_summary.csv",
+            "text/csv"
+        )
