@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
-from deep_translator import GoogleTranslator
 import plotly.express as px
 
-# ───── Page & Theme Setup ───────────────────────────────────────────────────────
+# Page & Theme Setup 
 st.set_page_config(
     page_title="Health Research Dashboard",
     layout="wide",
@@ -48,83 +47,120 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ───── Sidebar: File Uploader & Process Button ─────────────────────────────────
+
+# Sidebar: File Uploader & Process Button 
 st.sidebar.title("Upload CSVs")
 en_file = st.sidebar.file_uploader("English dataset", type="csv")
 fr_file = st.sidebar.file_uploader("French dataset", type="csv")
 process = st.sidebar.button("Process Data")
 progress = st.sidebar.progress(0)
 
+
 # Utility: ensure unique column names
 def make_unique(cols):
     cnt, out = {}, []
     for c in cols:
         cnt[c] = cnt.get(c, 0)
-        out.append(c if cnt[c]==0 else f"{c}_{cnt[c]}")
+        out.append(c if cnt[c] == 0 else f"{c}_{cnt[c]}")
         cnt[c] += 1
     return out
 
+
 if process:
-    # Step 1: Load & prepare
+    # Step 1: Load English and French datasets 
     progress.progress(10)
-    dfs = []
     if en_file:
-        dfs.append(pd.read_csv(en_file))
+        df_en = pd.read_csv(en_file, keep_default_na=False)
+    else:
+        df_en = pd.DataFrame()
     if fr_file:
-        df_fr = pd.read_csv(fr_file)
-        df_fr.columns = make_unique(df_fr.columns)
-        translator = GoogleTranslator(source='fr', target='en')
-        cmap = {}
-        for c in df_fr.columns:
-            try:
-                cmap[c] = translator.translate(c).strip().capitalize()
-            except:
-                cmap[c] = c
-        df_fr.rename(columns=cmap, inplace=True)
-        df_fr.columns = make_unique(df_fr.columns)
-        dfs.append(df_fr)
-    if not dfs:
+        df_fr = pd.read_csv(fr_file, keep_default_na=False)
+    else:
+        df_fr = pd.DataFrame()
+
+    if df_en.empty and df_fr.empty:
         st.sidebar.error("Upload at least one CSV file.")
         st.stop()
-    progress.progress(30)
 
-    # Step 2: Align schemas
-    all_cols = sorted(set().union(*[df.columns for df in dfs]))
-    empty = pd.DataFrame(columns=all_cols)
-    aligned = [pd.concat([empty, dfX], ignore_index=True)[all_cols] for dfX in dfs]
-    df = pd.concat(aligned, ignore_index=True)
-    dropcols = [c for c in all_cols if df[c].isna().all()]
-    df.drop(columns=dropcols, inplace=True)
+    # Step 2: Map French headers to English by position 
+    if not df_en.empty and not df_fr.empty:
+        header_map = { fr: en for fr, en in zip(df_fr.columns, df_en.columns) }
+        df_fr.rename(columns=header_map, inplace=True)
+
+    # Step 3: Harmonize Yes/No values in French data 
+    yes_no_map = {
+        'oui':       'Yes',
+        'non':       'No',
+        'yes':       'Yes',
+        'no':        'No',
+        'checked':   'Checked',
+        'coché':     'Checked',
+        'unchecked': 'Unchecked',
+        'non coché': 'Unchecked'
+    }
+    def harmonize_values(x):
+        if isinstance(x, str):
+            return yes_no_map.get(x.strip().lower(), x)
+        return x
+
+    if not df_fr.empty:
+        df_fr = df_fr.applymap(harmonize_values)
+
+    # Step 4: Align both DataFrames to the same columns 
+    all_cols = list(dict.fromkeys(df_en.columns.tolist() + df_fr.columns.tolist()))
+    df_en = df_en.reindex(columns=all_cols, fill_value="")
+    df_fr = df_fr.reindex(columns=all_cols, fill_value="")
+
+    # Step 5: Concatenate into one DataFrame 
+    df = pd.concat([df_en, df_fr], ignore_index=True)
+    blank_cols = [c for c in df.columns if (df[c] == "").all()]
+    df.drop(columns=blank_cols, inplace=True)
     progress.progress(50)
 
-    # Step 3: Filter countries
-    df['Country'] = df['Country'].astype(str) \
-        .str.replace(r'Guinea[\s-]?Bissau','Guinea-Bissau',flags=re.I)
-    targets = ["Nigeria","Togo","Ghana","Guinea-Bissau","Gambia","Sierra Leone"]
+    # Step 6: Filter to target countries 
+    df['Country'] = (
+        df['Country'].astype(str)
+        .str.replace(r'Guinea[\s-]?Bissau', 'Guinea-Bissau', flags=re.I)
+    )
+    targets = ["Nigeria", "Togo", "Ghana", "Guinea-Bissau", "Gambia", "Sierra Leone"]
     df = df[df['Country'].isin(targets)].copy()
     progress.progress(60)
 
-    # Step 4: Normalize yes/no
+    # Step 7: Normalize yes/no answers 
     def unify(v):
-        if not isinstance(v,str): return v
-        t=v.strip().lower()
-        if t in ('oui','yes','checked','true','1'): return 'Yes'
-        if t in ('non','no','unchecked','false','0'): return 'No'
+        if not isinstance(v, str):
+            return v
+        t = v.strip().lower()
+        if t in ('oui','yes','checked','true','1'):
+            return 'Yes'
+        if t in ('non','no','unchecked','false','0'):
+            return 'No'
         return v
+
     df = df.applymap(unify)
     progress.progress(70)
 
-    # Auto-detect site-name col (English or French)
-    name_col = next((c for c in df.columns if re.search(r'\bname\b',c,re.I)
-                     or re.search(r'nom.*institut',c,re.I)), df.columns[0])
+    # Step 8: Auto-detect site-name column 
+    name_col = next(
+        (c for c in df.columns if re.search(r'\bname\b', c, re.I)
+               or re.search(r'nom.*institut', c, re.I)),
+        df.columns[0]
+    )
 
-    # Step 5: Tabs & Analyses
+    # Step 9: Initialize Tabs 
     progress.progress(80)
-    tabs = st.tabs(["1. Identification","2. Capacity","3. Human Resources",
-                    "4. Translational","5. Infrastructure","6. Ethics/Reg",
-                    "7. Stakeholders","8. Policy"])
+    tabs = st.tabs([
+        "1. Identification",
+        "2. Capacity",
+        "3. Human Resources",
+        "4. Translational",
+        "5. Infrastructure",
+        "6. Ethics/Reg",
+        "7. Stakeholders",
+        "8. Policy"
+    ])
     
-    # ─── Tab 1: Identification ─────────────────────────────────
+    # Tab 1: Identification 
     with tabs[0]:
         st.header("1. Identification of Research Sites")
         cats = {
@@ -168,7 +204,7 @@ if process:
         st.download_button("Download sites list (CSV)",sites.to_csv(index=False),
                            "research_sites.csv","text/csv")
 
-    # ─── Tab 2: Capacity ─────────────────────────────────
+    # Tab 2: Capacity
     with tabs[1]:
         st.header("2. Capacity Evaluation")
         df['CapabilityScore']=df[bool_cols].sum(axis=1)
@@ -177,117 +213,105 @@ if process:
                     title="Avg Capability Score by Country",range_y=[0,len(bool_cols)])
         st.plotly_chart(fig2,use_container_width=True)
         st.download_button("Download capacity chart (HTML)",fig2.to_html(),"capacity.html")
-        # additional: heatmap
+        # heatmap
         heat= pd.DataFrame(melt1[melt1['Category'].isin([c.replace('Is','') for c in bool_cols])]
                             .pivot(index='Country',columns='Category',values='Count').fillna(0))
         fig2b=px.imshow(heat,labels=dict(x="Category",y="Country",color="Count"),
                         title="Heatmap of Site Counts per Category & Country")
         st.plotly_chart(fig2b,use_container_width=True)
 
-    # ─── Tab 3: Human Resource Assessment ────────────────────────────────────────
+    # Tab 3: Human Resource Assessment 
     with tabs[2]:
         st.header("3. Human Resource Assessment")
 
-        # ── 1. Define high-level boolean indicator groups ───────────────────
+        # 1️⃣ Boolean indicator groups (count how many sites said “Yes”)
         bool_groups = {
-            "Staff Sufficiency (%)": [r"sufficient to effectively carry out"],
-            "Clinical Staff Avail. (%)": [r"availability of clinical staff"],
-            "Lab Staff Avail. (%)":      [r"availability of laboratory staff"],
-            "Pharmacy Staff Avail. (%)": [r"availability of pharmacy staff"],
-            "Bioinformatics (%)":        [r"bioinformatics"],
-            "Cell Culture (%)":          [r"cell culture"],
-            "Org. Synthesis (%)":        [r"organic synthesis"],
-            "Virology (%)":              [r"virology"],
+            "Clinical Staff": [r"availability of clinical staff"],
+            "Lab Staff":      [r"availability of laboratory staff"],
+            "Pharmacy Staff":[r"availability of pharmacy staff"],
+            "Bioinformatics":        [r"bioinformatics"],
+            "Cell Culture":          [r"cell culture"],
+            "Org. Synthesis":        [r"organic synthesis"],
+            "Virology":              [r"virology"],
         }
 
-        # Compute per-site boolean flags (1 if any matching question == Yes)
+        # Compute per‐site flags (1 if any matching question == "Yes")
         for name, pats in bool_groups.items():
             cols = [
                 c for c in df.columns
                 if any(re.search(p, c, re.IGNORECASE) for p in pats)
             ]
-            df[name] = (
-                df[cols]
-                .eq("Yes")
-                .any(axis=1)
-                .astype(int)
-            )
+            df[name] = df[cols].eq("Yes").any(axis=1).astype(int)
 
-        # Aggregate to country-level % Yes
-        bool_summary = (
-            df.groupby("Country")[list(bool_groups.keys())]
-              .mean()
-              .multiply(100)
-              .round(1)
-        )
+        # Country‐level sums of “Yes”
+        bool_summary = df.groupby("Country")[list(bool_groups.keys())].sum()
 
-        # ── 2. Define high-level numeric groups ─────────────────────────────
+        # 2️⃣ Numeric staff‐count groups: per‐site max then country‐sum
         num_groups = {
-            "Num Other Staff": [r"number of other staff"],
-            "Num PhD":         [r"doctorate|phd"],
-            "Num MSc":         [r"master's|msc"],
-            "Total Staff":     [r"total number of personnel"],
+            "Other Staff": [r"number of other staff"],
+            "PhD":         [r"doctorate|phd"],
+            "MSc":         [r"master's|msc"],
         }
 
-        # Compute per-site numeric indicators (max across duplicates)
         for name, pats in num_groups.items():
             cols = [
                 c for c in df.columns
                 if any(re.search(p, c, re.IGNORECASE) for p in pats)
             ]
             if cols:
-                numeric_df = df[cols].apply(lambda col: pd.to_numeric(col, errors="coerce"))
-                df[name] = numeric_df.max(axis=1).fillna(0)
+                numeric_df = df[cols].apply(pd.to_numeric, errors="coerce")
+                df[name] = numeric_df.max(axis=1).fillna(0).astype(int)
             else:
                 df[name] = 0
 
-        # Aggregate to country-level averages
-        num_summary = (
-            df.groupby("Country")[list(num_groups.keys())]
-              .mean()
-              .round(1)
-        )
+        # Country‐level sums of those counts
+        num_summary = df.groupby("Country")[list(num_groups.keys())].sum()
 
-        # ── 3. Combine into one tidy table ────────────────────────────────
+        # 3️⃣ Total Staff = sum of the 10 columns per country
+        all_staff_cols = list(bool_groups.keys()) + list(num_groups.keys())
+        total = bool_summary.add(num_summary, fill_value=0).sum(axis=1).astype(int)
+        num_summary["Total Staff"] = total
+
+        # 4️⃣ Combined table
         combined = pd.concat([bool_summary, num_summary], axis=1)
-        st.subheader("Staff Sufficiency & Average Counts by Country")
+        combined.index.name = "Country"
+        st.subheader("Number of “Yes” Responses & Staff Counts by Country")
         st.table(combined)
 
-        # ── 4. Visual #1: %-Yes bar chart ───────────────────────────────
-        melt_b = (
+        # 5️⃣ Bar chart of “Yes” counts
+        melt_bool = (
             bool_summary
             .reset_index()
-            .melt("Country", var_name="Indicator", value_name="% Yes")
+            .melt("Country", var_name="Indicator", value_name="Count of Yes")
         )
-        fig_hr1 = px.bar(
-            melt_b,
+        fig_bool = px.bar(
+            melt_bool,
             x="Country",
-            y="% Yes",
+            y="Count of Yes",
             color="Indicator",
             barmode="group",
-            title="Percentage of 'Yes' Responses by Country"
+            title="Sites Reporting “Yes” by Indicator"
         )
-        st.plotly_chart(fig_hr1, use_container_width=True)
+        st.plotly_chart(fig_bool, use_container_width=True)
 
-        # ── 5. Visual #2: Average counts bar chart ───────────────────────
-        melt_n = (
+        # 6️⃣ Bar chart of staff counts including Total Staff
+        melt_num = (
             num_summary
             .reset_index()
-            .melt("Country", var_name="Measure", value_name="Average")
+            .melt("Country", var_name="Staff Category", value_name="Count")
         )
-        fig_hr2 = px.bar(
-            melt_n,
+        fig_num = px.bar(
+            melt_num,
             x="Country",
-            y="Average",
-            color="Measure",
+            y="Count",
+            color="Staff Category",
             barmode="group",
-            title="Average Staff Counts by Country"
+            title="Staff Counts by Country (incl. Total Staff)"
         )
-        st.plotly_chart(fig_hr2, use_container_width=True)
+        st.plotly_chart(fig_num, use_container_width=True)
 
 
-
-    # ─── Tab 4: Translational ─────────────────────────────────
+    # Tab 4: Translational 
     with tabs[3]:
         st.header("4. Translational Research (Phase I)")
         trans=[c for c in df.columns if re.search(r"phase.*i",c,re.I)]
@@ -302,7 +326,7 @@ if process:
                          color='Country',title='Phase I Trials vs. Capability Score')
         st.plotly_chart(fig4b,use_container_width=True)
 
-    # ─── Tab 5: Infrastructure ─────────────────────────────────
+    # Tab 5: Infrastructure 
     with tabs[4]:
         st.header("5. Infrastructure Analysis")
         infra_terms=['availability of advanced','level of biosecurity','iso certification']
@@ -317,7 +341,7 @@ if process:
                          title='Distribution of Infrastructure Index by Country')
         st.plotly_chart(fig5b,use_container_width=True)
 
-    # ─── Tab 6: Ethics & Regulatory ─────────────────────────────────
+    # Tab 6: Ethics & Regulatory 
     with tabs[5]:
         st.header("6. Ethics & Regulatory")
         ethic_terms=['ethic','irb','regul','guidelines']
@@ -333,17 +357,17 @@ if process:
                      title='IRB Coverage by Country')
         st.plotly_chart(fig6b,use_container_width=True)
 
-            # ─── Tab 7: Stakeholder Mapping ────────────────────────────────────────
+       # Tab 7: Stakeholder Mapping 
     with tabs[6]:
         st.header("7. Stakeholder Mapping")
 
-        # 1. Free-text columns that may list collaborators
+        # 1️⃣ Define the free-text columns that may contain stakeholder lists
         free_text_cols = [
             'Other (Please specify)',
             'If yes, list the research collaborations in the last 5 years'
         ]
 
-        # 2. Extract every raw entry, keeping only non-empty site names
+        # 2️⃣ Extract raw entries, split on common delimiters, keep valid site names
         records = []
         for col in free_text_cols:
             if col in df.columns:
@@ -355,67 +379,76 @@ if process:
                       .str.strip()
                 ).dropna()
                 for idx, raw in exploded.items():
-                    raw = raw.strip()
-                    if not raw:
+                    if not raw or raw.lower() in ("nan",):
                         continue
-                    # coerce site to string, skip blanks
-                    site_raw = df.at[idx, name_col]
-                    site = str(site_raw).strip()
-                    if not site or site.lower() in ('nan',):
+                    site = str(df.at[idx, name_col]).strip()
+                    if not site or site.lower() in ("nan",):
                         continue
                     records.append({
                         'Country':       df.at[idx, 'Country'],
                         'Site':          site,
-                        'RawStakeholder': raw
+                        'RawEntry':      raw
                     })
 
         site_stake_df = pd.DataFrame(records)
 
-        # 3. Further split any numbered or starred lists into individual names
+        # 3️⃣ Further split any numbered or starred lists into individual stakeholders
         def split_items(raw):
-            tmp = re.sub(r'\d+\.', ';', raw)
-            tmp = re.sub(r'\*+', ';', tmp)
+            tmp = re.sub(r'\d+\.', ';', raw)    # "1. Org" → "; Org"
+            tmp = re.sub(r'\*+', ';', tmp)       # "***Org" → ";Org"
             parts = re.split(r'[;,\n]+', tmp)
             return [p.strip() for p in parts if p.strip()]
 
         site_clean = (
             site_stake_df
-              .assign(Stakeholder=site_stake_df['RawStakeholder']
-                                         .apply(split_items))
+              .assign(Stakeholder=site_stake_df['RawEntry'].apply(split_items))
               .explode('Stakeholder')
         )
 
-        # 4. Group by country & stakeholder, concatenating only valid strings
+        # 4️⃣ Group by country & stakeholder, collect unique sites & counts
         def join_sites(sites):
-            unique = {str(x).strip() for x in sites if isinstance(x, str) and x.strip()}
-            return "; ".join(sorted(unique))
+            unique = sorted({s for s in sites if isinstance(s, str) and s.strip()})
+            return "; ".join(unique)
 
         grouped = (
             site_clean
-              .groupby(['Country','Stakeholder'])
-              .agg(Sites=('Site', join_sites))
+              .groupby(['Country', 'Stakeholder'])
+              .agg(
+                  SitesList=('Site', join_sites),
+                  CountSites=('Site', lambda s: s.nunique())
+              )
               .reset_index()
         )
 
-        # 5. Display & download
+        # 5️⃣ Sort for display: within each country, highest counts first
+        display_df = (
+            grouped
+              .sort_values(['Country', 'CountSites', 'Stakeholder'], 
+                           ascending=[True, False, True])
+              .reset_index(drop=True)
+        )
+
+        # 6️⃣ Render as an interactive, scrollable table
         st.subheader("Stakeholders by Country")
-        st.table(grouped)
+        st.dataframe(display_df, use_container_width=True, height=400)
+
+        # 7️⃣ Download stakeholders file as csv
         st.download_button(
-            "Download cleaned stakeholders (CSV)",
-            grouped.to_csv(index=False),
+            "Download Stakeholders (CSV)",
+            display_df.to_csv(index=False),
             "cleaned_stakeholders_by_country.csv",
             "text/csv"
         )
 
 
-    # ─── Tab 8: Policy & Legislation ─────────────────────────────────────
+    # Tab 8: Policy & Legislation 
     with tabs[7]:
         st.header("8. Policy & Legislation")
 
         # 1️⃣ Column names
-        policy_exists_col       = 'Is there a health research policy in your country?'
-        policy_disseminated_col = 'Has the policy been disseminated?'
-        policy_implemented_col  = 'Is the policy currently under implementation?'
+        policy_exists_col       = "Is there a health research policy in your country?"
+        policy_disseminated_col = "Has the policy been disseminated?"
+        policy_implemented_col  = "Is the policy currently under implementation?"
         budget_col              = "What percentage of the national health budget is allocated to health-related R&D, considering the AU's 2% target?"
         sop_cols = [
             'Available SOPs (choice=Consent Process)',
@@ -448,14 +481,13 @@ if process:
         df['PolicyDisseminated'] = df[policy_disseminated_col].map(to_bin)
         df['PolicyImplemented']  = df[policy_implemented_col].map(to_bin)
 
-        # 4️⃣ Budget as fraction
+        # 4️⃣ Budget as fraction 0–1, coercing non-numeric to 0
+        budget_series = df[budget_col].astype(str).str.rstrip('%').replace('', '0')
         df['Budget_pct'] = (
-            df[budget_col]
-              .astype(str)
-              .str.rstrip('%')
-              .replace('', '0')
-              .astype(float)
-              .clip(0,100) / 100.0
+            pd.to_numeric(budget_series, errors='coerce')
+              .fillna(0)
+              .clip(0,100)
+              / 100.0
         )
 
         # 5️⃣ SOP coverage
@@ -465,7 +497,6 @@ if process:
         # 6️⃣ Build site_policy DataFrame
         site_policy = pd.DataFrame({
             'Country':      df['Country'],
-            'Site':         df['Name of Institute'],
             'Exists':       df['PolicyExists'],
             'Disseminated': df['PolicyDisseminated'] & df['PolicyExists'],
             'Implemented':  df['PolicyImplemented']  & df['PolicyExists'],
@@ -483,7 +514,7 @@ if process:
                   pct_implemented   = ('Implemented', 'mean'),
                   avg_budget_alloc  = ('Budget',      'mean'),
                   avg_sop_coverage  = ('SOP_Coverage','mean'),
-                  num_sites         = ('Site',        'count')
+                  num_sites         = ('Exists',      'count')
               )
               .reset_index()
         )
@@ -492,17 +523,16 @@ if process:
             country_summary['pct_with_policy'] - country_summary['pct_implemented']
         )
 
-        # 8️⃣ Display table (percent → “xx.x%”)
+        # 8️⃣ Display table with formatted percentages & decimals
         disp = country_summary.copy()
         for p in ['pct_with_policy','pct_disseminated','pct_implemented','implementation_gap']:
-            disp[p] = (disp[p]*100).round(1).astype(str) + '%'
+            disp[p] = (disp[p] * 100).round(1).astype(str) + '%'
         disp[['avg_budget_alloc','avg_sop_coverage']] = disp[['avg_budget_alloc','avg_sop_coverage']].round(2)
-
         st.subheader("Country-level Policy & Legislation Summary")
         st.table(disp.set_index('Country'))
 
         # 9️⃣ Bar chart of policy metrics
-        melt = country_summary.melt(
+        melt_bar = country_summary.melt(
             id_vars='Country',
             value_vars=['pct_with_policy','pct_disseminated','pct_implemented'],
             var_name='Metric',
@@ -513,10 +543,9 @@ if process:
             'pct_disseminated': '% Disseminated',
             'pct_implemented':  '% Implemented'
         }
-        melt['Metric'] = melt['Metric'].map(label_map)
-
-        fig8 = px.bar(
-            melt,
+        melt_bar['Metric'] = melt_bar['Metric'].map(label_map)
+        fig_bar = px.bar(
+            melt_bar,
             x='Country',
             y='Value',
             color='Metric',
@@ -524,16 +553,28 @@ if process:
             title="Policy Existence, Dissemination & Implementation by Country",
             labels={'Value':'Proportion (0–1)'}
         )
-        st.plotly_chart(fig8, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-        # 10️⃣ Radar chart
+        # 🔟 Pie charts faceted by country
+        pie_df = melt_bar.copy()
+        fig_pie = px.pie(
+            pie_df,
+            names='Metric',
+            values='Value',
+            facet_col='Country',
+            title="Policy Breakdown by Country (Proportions)",
+            labels={'Value':'Proportion (0–1)'}
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+        # 1️⃣1️⃣ Radar chart
         melt_radar = country_summary.melt(
             id_vars='Country',
             value_vars=['pct_with_policy','pct_disseminated','pct_implemented','implementation_gap'],
             var_name='Metric',
             value_name='Value'
         )
-        fig8b = px.line_polar(
+        fig_radar = px.line_polar(
             melt_radar,
             r='Value',
             theta='Metric',
@@ -541,9 +582,9 @@ if process:
             line_close=True,
             title='Policy Radar Chart by Country'
         )
-        st.plotly_chart(fig8b, use_container_width=True)
+        st.plotly_chart(fig_radar, use_container_width=True)
 
-        # 11️⃣ Download
+        # 1️⃣2️⃣ Download summary
         st.download_button(
             "Download Policy Summary (CSV)",
             country_summary.to_csv(index=False),
@@ -552,6 +593,7 @@ if process:
         )
 
     progress.progress(100)
+
 
 else:
     st.sidebar.info("Upload one or both CSV files, then click 'Process Data'.")
