@@ -224,7 +224,7 @@ if process:
     with tabs[2]:
         st.header("3. Human Resource Assessment")
 
-        # 1️⃣ Boolean indicator groups (count how many sites said “Yes”)
+        # 1 Boolean indicator groups (count how many sites said “Yes”)
         bool_groups = {
             "Clinical Staff": [r"availability of clinical staff"],
             "Lab Staff":      [r"availability of laboratory staff"],
@@ -246,7 +246,7 @@ if process:
         # Country‐level sums of “Yes”
         bool_summary = df.groupby("Country")[list(bool_groups.keys())].sum()
 
-        # 2️⃣ Numeric staff‐count groups: per‐site max then country‐sum
+        # 2️ Numeric staff‐count groups: per‐site max then country‐sum
         num_groups = {
             "Other Staff": [r"number of other staff"],
             "PhD":         [r"doctorate|phd"],
@@ -267,18 +267,18 @@ if process:
         # Country‐level sums of those counts
         num_summary = df.groupby("Country")[list(num_groups.keys())].sum()
 
-        # 3️⃣ Total Staff = sum of the 10 columns per country
+        # 3️ Total Staff = sum of the 10 columns per country
         all_staff_cols = list(bool_groups.keys()) + list(num_groups.keys())
         total = bool_summary.add(num_summary, fill_value=0).sum(axis=1).astype(int)
         num_summary["Total Staff"] = total
 
-        # 4️⃣ Combined table
+        # 4️ Combined table
         combined = pd.concat([bool_summary, num_summary], axis=1)
         combined.index.name = "Country"
         st.subheader("Number of “Yes” Responses & Staff Counts by Country")
         st.table(combined)
 
-        # 5️⃣ Bar chart of “Yes” counts
+        # 5️ Bar chart of “Yes” counts
         melt_bool = (
             bool_summary
             .reset_index()
@@ -294,7 +294,7 @@ if process:
         )
         st.plotly_chart(fig_bool, use_container_width=True)
 
-        # 6️⃣ Bar chart of staff counts including Total Staff
+        # 6️ Bar chart of staff counts including Total Staff
         melt_num = (
             num_summary
             .reset_index()
@@ -361,13 +361,13 @@ if process:
     with tabs[6]:
         st.header("7. Stakeholder Mapping")
 
-        # 1️⃣ Define the free-text columns that may contain stakeholder lists
+        # 1️ Define the free-text columns that may contain stakeholder lists
         free_text_cols = [
             'Other (Please specify)',
             'If yes, list the research collaborations in the last 5 years'
         ]
 
-        # 2️⃣ Extract raw entries, split on common delimiters, keep valid site names
+        # 2️ Extract raw entries, split on common delimiters, keep valid site names
         records = []
         for col in free_text_cols:
             if col in df.columns:
@@ -392,7 +392,7 @@ if process:
 
         site_stake_df = pd.DataFrame(records)
 
-        # 3️⃣ Further split any numbered or starred lists into individual stakeholders
+        # 3️ Further split any numbered or starred lists into individual stakeholders
         def split_items(raw):
             tmp = re.sub(r'\d+\.', ';', raw)    # "1. Org" → "; Org"
             tmp = re.sub(r'\*+', ';', tmp)       # "***Org" → ";Org"
@@ -405,7 +405,7 @@ if process:
               .explode('Stakeholder')
         )
 
-        # 4️⃣ Group by country & stakeholder, collect unique sites & counts
+        # 4️ Group by country & stakeholder, collect unique sites & counts
         def join_sites(sites):
             unique = sorted({s for s in sites if isinstance(s, str) and s.strip()})
             return "; ".join(unique)
@@ -420,7 +420,7 @@ if process:
               .reset_index()
         )
 
-        # 5️⃣ Sort for display: within each country, highest counts first
+        # 5️ Sort for display: within each country, highest counts first
         display_df = (
             grouped
               .sort_values(['Country', 'CountSites', 'Stakeholder'], 
@@ -428,11 +428,11 @@ if process:
               .reset_index(drop=True)
         )
 
-        # 6️⃣ Render as an interactive, scrollable table
+        # 6️ Render as an interactive, scrollable table
         st.subheader("Stakeholders by Country")
         st.dataframe(display_df, use_container_width=True, height=400)
 
-        # 7️⃣ Download stakeholders file as csv
+        # 7️ Download stakeholders file as csv
         st.download_button(
             "Download Stakeholders (CSV)",
             display_df.to_csv(index=False),
@@ -445,7 +445,7 @@ if process:
     with tabs[7]:
         st.header("8. Policy & Legislation")
 
-        # 1️⃣ Column names
+        # 1️ Column names
         policy_exists_col       = "Is there a health research policy in your country?"
         policy_disseminated_col = "Has the policy been disseminated?"
         policy_implemented_col  = "Is the policy currently under implementation?"
@@ -471,17 +471,17 @@ if process:
             'Available SOPs (choice=Other (Specify))'
         ]
 
-        # 2️⃣ Yes→1 helper
+        # 2️ Yes→1 helper
         yes_set = {'yes','oui','checked'}
         def to_bin(x):
             return 1 if str(x).strip().lower() in yes_set else 0
 
-        # 3️⃣ Site-level flags
+        # 3️ Site-level flags
         df['PolicyExists']       = df[policy_exists_col].map(to_bin)
         df['PolicyDisseminated'] = df[policy_disseminated_col].map(to_bin)
         df['PolicyImplemented']  = df[policy_implemented_col].map(to_bin)
 
-        # 4️⃣ Budget as fraction 0–1, coercing non-numeric to 0
+        # 4️ Budget as fraction 0–1, coercing non-numeric to 0
         budget_series = df[budget_col].astype(str).str.rstrip('%').replace('', '0')
         df['Budget_pct'] = (
             pd.to_numeric(budget_series, errors='coerce')
@@ -490,11 +490,11 @@ if process:
               / 100.0
         )
 
-        # 5️⃣ SOP coverage
+        # 5️ SOP coverage
         sop_flags = df[sop_cols].applymap(to_bin)
         df['SOP_Coverage'] = sop_flags.sum(axis=1) / len(sop_cols)
 
-        # 6️⃣ Build site_policy DataFrame
+        # 6️ Build site_policy DataFrame
         site_policy = pd.DataFrame({
             'Country':      df['Country'],
             'Exists':       df['PolicyExists'],
@@ -504,7 +504,7 @@ if process:
             'SOP_Coverage': df['SOP_Coverage']
         })
 
-        # 7️⃣ Country aggregates
+        # 7️ Country aggregates
         country_summary = (
             site_policy
               .groupby('Country')
@@ -523,7 +523,7 @@ if process:
             country_summary['pct_with_policy'] - country_summary['pct_implemented']
         )
 
-        # 8️⃣ Display table with formatted percentages & decimals
+        # 8️ Display table with formatted percentages & decimals
         disp = country_summary.copy()
         for p in ['pct_with_policy','pct_disseminated','pct_implemented','implementation_gap']:
             disp[p] = (disp[p] * 100).round(1).astype(str) + '%'
@@ -531,7 +531,7 @@ if process:
         st.subheader("Country-level Policy & Legislation Summary")
         st.table(disp.set_index('Country'))
 
-        # 9️⃣ Bar chart of policy metrics
+        # 9️ Bar chart of policy metrics
         melt_bar = country_summary.melt(
             id_vars='Country',
             value_vars=['pct_with_policy','pct_disseminated','pct_implemented'],
@@ -555,7 +555,7 @@ if process:
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        # 🔟 Pie charts faceted by country
+        # 10 Pie charts faceted by country
         pie_df = melt_bar.copy()
         fig_pie = px.pie(
             pie_df,
@@ -567,7 +567,7 @@ if process:
         )
         st.plotly_chart(fig_pie, use_container_width=True)
 
-        # 1️⃣1️⃣ Radar chart
+        # 11 Radar chart
         melt_radar = country_summary.melt(
             id_vars='Country',
             value_vars=['pct_with_policy','pct_disseminated','pct_implemented','implementation_gap'],
@@ -584,7 +584,7 @@ if process:
         )
         st.plotly_chart(fig_radar, use_container_width=True)
 
-        # 1️⃣2️⃣ Download summary
+        # 1️2️ Download summary
         st.download_button(
             "Download Policy Summary (CSV)",
             country_summary.to_csv(index=False),
