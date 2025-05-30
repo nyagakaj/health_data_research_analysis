@@ -28,9 +28,7 @@ nav_html = """
 </div>
 """
 st.markdown(nav_html, unsafe_allow_html=True)
-
-
-# Custom CSS 
+# Custom CSS --tabs
 st.markdown("""
 <style>
   /* 1) Make the tablist a flex container with a uniform gap */
@@ -65,7 +63,6 @@ st.markdown("""
   }
 </style>
 """, unsafe_allow_html=True)
-
 
 #Custom STYLING FOR THE FORM - upload container
 st.markdown("""
