@@ -4,14 +4,14 @@ import numpy as np
 import re
 import plotly.express as px
 
-# ── Page & Theme Setup ─────────────────────────────────────────────────────────
+# Page & Theme Setup 
 st.set_page_config(page_title="Health Research Dashboard", layout="wide")
 
-# ── Routing State ──────────────────────────────────────────────────────────────
+# Routing State 
 if "page" not in st.session_state:
     st.session_state.page = "upload"
 
-# ── Top Navigation Bar ─────────────────────────────────────────────────────────
+# Top Navigation Bar 
 nav_html = """
 <div style="position:sticky; top:0; left:0; width:100%; padding:10px 20px; z-index:1000; background: #fff;">
   <div style="display:flex; align-items:center;">
@@ -28,7 +28,7 @@ nav_html = """
 """
 st.markdown(nav_html, unsafe_allow_html=True)
 
-# ── Custom CSS ─────────────────────────────────────────────────────────────────
+# Custom CSS 
 st.markdown("""
 <style>
 /* Tabs styling */
@@ -107,13 +107,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── Shared palette ─────────────────────────────────────────────────────────────
+# Shared palette
 palette = [
     "#1A5632", "#9F2241", "#B4A269", "#348F41",
     "#58595B", "#9F2241", "#B4A269", "#1A5632"
 ]
 
-# ── Utility: ensure unique column names ────────────────────────────────────────
+#Utility: ensure unique column names 
 def make_unique(cols):
     cnt, out = {}, []
     for c in cols:
@@ -150,7 +150,7 @@ def show_upload():
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── RESULTS PAGE ───────────────────────────────────────────────────────────────
+# RESULTS PAGE 
 def show_results():
     st.markdown("### Results")
     if st.button("← Back to Upload"):
@@ -224,7 +224,7 @@ def show_results():
         "7. Stakeholders","8. Policy"
     ])
 
-    # ── Tab 1: Identification ───────────────────────────────────────────────────
+    # Tab 1: Identification 
     with tabs[0]:
         st.header("1. Identification of Research Sites")
         cats = {
@@ -273,7 +273,7 @@ def show_results():
         st.download_button("Download sites list (CSV)", sites.to_csv(index=False),
                            "research_sites.csv","text/csv")
 
-    # ── Tab 2: Capacity ─────────────────────────────────────────────────────────
+    # Tab 2: Capacity 
     with tabs[1]:
         st.header("2. Capacity Evaluation")
         df['CapabilityScore'] = df[bool_cols].sum(axis=1)
@@ -352,7 +352,7 @@ def show_results():
         )
         st.plotly_chart(fig_num, use_container_width=True)
 
-    # ── Tab 4: Translational ───────────────────────────────────────────────────
+    # Tab 4: Translational 
     with tabs[3]:
         st.header("4. Translational Research (Phase I)")
         trans = [c for c in df.columns if re.search(r"phase.*i", c, re.I)]
@@ -374,7 +374,7 @@ def show_results():
         )
         st.plotly_chart(fig4b, use_container_width=True)
 
-    # ── Tab 5: Infrastructure ─────────────────────────────────────────────────
+    # Tab 5: Infrastructure 
     with tabs[4]:
         st.header("5. Infrastructure Analysis")
         infra_terms=['availability of advanced','level of biosecurity','iso certification']
@@ -394,7 +394,7 @@ def show_results():
         )
         st.plotly_chart(fig5b, use_container_width=True)
 
-    # ── Tab 6: Ethics & Regulatory ──────────────────────────────────────────────
+    #  Tab 6: Ethics & Regulatory 
     with tabs[5]:
         st.header("6. Ethics & Regulatory")
         ethic_terms=['ethic','irb','regul','guidelines']
@@ -414,7 +414,7 @@ def show_results():
         )
         st.plotly_chart(fig6b, use_container_width=True)
 
-    # ── Tab 7: Stakeholder Mapping ──────────────────────────────────────────────
+    # Tab 7: Stakeholder Mapping 
     with tabs[6]:
         st.header("7. Stakeholder Mapping")
         free_cols = [
@@ -458,7 +458,7 @@ def show_results():
         fig7.update_layout(xaxis_title=None, yaxis_title="Number of Sites")
         st.plotly_chart(fig7, use_container_width=True)
 
-    # ── Tab 8: Policy & Legislation ─────────────────────────────────────────────
+    # Tab 8: Policy & Legislation 
     with tabs[7]:
         st.header("8. Policy & Legislation")
         col_exists = "Is there a health research policy in your country?"
@@ -577,7 +577,7 @@ def show_results():
 
     progress.progress(100)
 
-# ── Page Routing ───────────────────────────────────────────────────────────────
+# Page Routing 
 if st.session_state.page == "results":
     show_results()
 else:
