@@ -12,7 +12,7 @@ backgroundColor = "#FFFF" # white
 secondaryBackgroundColor =  "#ebd2b9" # wheat  "#B4A269" # gold <-- not enough contrast
 
 # Font color for the page.
-textColor = "#6e7074" # grey
+textColor = "#000000" # black
 
 # Font family (serif | sans serif | mono) for the page. Will not impact code areas.
 # Default: "sans serif"
