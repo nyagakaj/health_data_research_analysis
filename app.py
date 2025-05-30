@@ -31,78 +31,6 @@ st.markdown(nav_html, unsafe_allow_html=True)
 # ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Push content below navbar */
-.block-container { padding-top: 100px !important; }
-
-/* Upload container as card */
-.upload-container {
-  background: #ffffff;
-  padding: 2rem;
-  border-radius: 1rem;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.07);
-  max-width: 450px !important;
-  width: 60% !important;
-  margin: 2rem auto !important;
-  text-align: center;
-}
-
-/* Heading & caption */
-.upload-container h2 {
-  color: #1A5632;
-  margin-bottom: 0.5rem;
-}
-.upload-container p.caption {
-  color: #555;
-  margin-bottom: 1.5rem;
-}
-
-/* Two side-by-side data-cards */
-.upload-container .data-cards {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin-bottom: 1.5rem;
-}
-.upload-container .data-card {
-  flex: 1;
-  background: #f9f9f9;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  text-align: center;
-}
-.upload-container .data-card h4 {
-  margin-bottom: 0.5rem;
-  color: #1A5632;
-}
-
-/* File uploader styling */
-.upload-container .data-card .stFileUploader > div {
-  padding: 0.5rem !important;
-  border: 2px dashed #1A5632 !important;
-  border-radius: 0.5rem !important;
-  background-color: #fafafa !important;
-}
-.upload-container .data-card .stFileUploader > div:hover {
-  border-color: #348F41 !important;
-}
-
-/* Process Data button */
-.upload-container .stButton button {
-  background-color: #1A5632;
-  color: #fff;
-  border: none;
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  width: 100%;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-.upload-container .stButton button:hover {
-  background-color: #348F41;
-}
-
 /* Tabs styling */
 .stTabs [role="tab"] {
   font-size: 18px !important;
@@ -124,6 +52,61 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+#Custom STYLING FOR THE FORM - upload container
+st.markdown("""
+<style>
+/* Widen the Streamlit form container */
+.stForm {
+  max-width: 1200px !important;   /* was 360px */
+  width: 100% !important;          /* allow it to grow on larger screens */
+  margin: 2rem auto !important;
+  padding: 2rem !important;
+  background: #ffffff !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1) !important;
+}
+
+/* Form header */
+.stForm h2 {
+  font-size: 1.75rem !important;
+  margin-bottom: 1rem !important;
+  color: #1A5632 !important;
+}
+
+/* Uploader dropzones */
+.stForm .stFileUploader > div {
+  background: #f7f7f7 !important;
+  border: 1px solid #ddd !important;
+  border-radius: 0.5rem !important;
+  padding: 1rem !important;
+  transition: all 0.2s ease !important;
+}
+.stForm .stFileUploader > div:hover {
+  border-color: #1A5632 !important;
+  box-shadow: 0 0 0 4px rgba(26,86,50,0.15) !important;
+}
+
+/* Submit button */
+.stForm button[type="submit"] {
+  background-color: #1A5632 !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 0.75rem !important;
+  padding: 0.75rem 1rem !important;
+  font-size: 1.1rem !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+  width: 100% !important;
+  margin-top: 1rem !important;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+.stForm button[type="submit"]:hover {
+  background-color: #12502e !important;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # ── Shared palette ─────────────────────────────────────────────────────────────
 palette = [
     "#1A5632", "#9F2241", "#B4A269", "#348F41",
@@ -139,23 +122,26 @@ def make_unique(cols):
         cnt[c] += 1
     return out
 
-# ── UPLOAD PAGE ────────────────────────────────────────────────────────────────
+# UPLOAD PAGE 
 def show_upload():
+    # wrap the form in our upload-form container
+    st.markdown('<div class="upload-form">', unsafe_allow_html=True)
     with st.form("upload_form"):
         st.markdown('<h2>Africa Research Sites Mapping Dashboard</h2>', unsafe_allow_html=True)
         st.markdown('<p class="caption">Upload one or both CSV files to get started.</p>', unsafe_allow_html=True)
 
-        st.markdown('<div class="data-cards">', unsafe_allow_html=True)
-        # English dataset card
-        st.markdown('<div class="data-card"><h4>English Dataset</h4>', unsafe_allow_html=True)
+        st.markdown('<div class="dataset-boxes">', unsafe_allow_html=True)
+        # English dataset box
+        st.markdown('<div class="dataset-box"><h4>English Dataset</h4>', unsafe_allow_html=True)
         st.file_uploader("", type="csv", key="en_file")
         st.markdown('</div>', unsafe_allow_html=True)
-        # French dataset card
-        st.markdown('<div class="data-card"><h4>French Dataset</h4>', unsafe_allow_html=True)
+        # French dataset box
+        st.markdown('<div class="dataset-box"><h4>French Dataset</h4>', unsafe_allow_html=True)
         st.file_uploader("", type="csv", key="fr_file")
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+        # submit
         if st.form_submit_button("Analyze Data"):
             if not st.session_state.get("en_file") and not st.session_state.get("fr_file"):
                 st.error("Please upload at least one CSV file.")
