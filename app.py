@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+import streamlit.components.v1 as components
 import plotly.express as px
 
 # Page & Theme Setup 
@@ -28,29 +29,43 @@ nav_html = """
 """
 st.markdown(nav_html, unsafe_allow_html=True)
 
+
 # Custom CSS 
 st.markdown("""
 <style>
-/* Tabs styling */
-.stTabs [role="tab"] {
-  font-size: 18px !important;
-  padding: 10px 16px !important;
-  border-radius: 8px 8px 0 0;
-  margin-right: 4px;
-}
-.stTabs [role="tab"]:nth-child(1) { background: #1A5632; }
-.stTabs [role="tab"]:nth-child(2) { background: #9F2241; }
-.stTabs [role="tab"]:nth-child(3) { background: #B4A269; }
-.stTabs [role="tab"]:nth-child(4) { background: #348F41; }
-.stTabs [role="tab"]:nth-child(5) { background: #58595B; }
-.stTabs [role="tab"]:nth-child(6) { background: #9F2241; }
-.stTabs [role="tab"]:nth-child(7) { background: #B4A269; }
-.stTabs [role="tab"]:nth-child(8) { background: #1A5632; }
-.stTabs [role="tab"][aria-selected="true"] {
-  color: #fff !important;
-}
+  /* 1) Make the tablist a flex container with a uniform gap */
+  .stTabs > div[role="tablist"] {
+    display: flex !important;
+    gap: 30px !important;            /* space *between* each tab */
+    padding-bottom: 8px !important;  /* gives a bit of breathing room under the tabs */
+  }
+
+  /* 2) Let every tab flex to the same width and center its text */
+  .stTabs [role="tab"] {
+    flex: 1 1 0 !important;           /* all tabs share the row equally */
+    text-align: center !important;
+    font-size: 18px !important;
+    padding: 10px 22px !important;
+    border-radius: 8px 8px 0 0 !important;
+    margin: 0 !important;             /* kill any leftover margins */
+  }
+
+  /* 3) Re-apply your color rules */
+  .stTabs [role="tab"]:nth-child(1) { background: #1A5632; }
+  .stTabs [role="tab"]:nth-child(2) { background: #9F2241; }
+  .stTabs [role="tab"]:nth-child(3) { background: #B4A269; }
+  .stTabs [role="tab"]:nth-child(4) { background: #348F41; }
+  .stTabs [role="tab"]:nth-child(5) { background: #58595B; }
+  .stTabs [role="tab"]:nth-child(6) { background: #9F2241; }
+  .stTabs [role="tab"]:nth-child(7) { background: #B4A269; }
+  .stTabs [role="tab"]:nth-child(8) { background: #1A5632; }
+
+  .stTabs [role="tab"][aria-selected="true"] {
+    color: #fff !important;
+  }
 </style>
 """, unsafe_allow_html=True)
+
 
 #Custom STYLING FOR THE FORM - upload container
 st.markdown("""
