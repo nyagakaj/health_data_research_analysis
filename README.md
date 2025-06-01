@@ -1,4 +1,3 @@
-````
 # Health Research Dashboard
 
 This Streamlit application allows users to upload one or two CSV datasets (English and/or French) containing research site information, and then explore various summaries, visualizations, and a spatial overview of core metrics across selected African countries.
@@ -90,7 +89,7 @@ This Streamlit application allows users to upload one or two CSV datasets (Engli
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
-````
+
 
 The `requirements.txt` should include (at minimum):
 
@@ -146,5 +145,4 @@ streamlit==1.45.1
 
 Feel free to adjust colors, add/remove target countries, or customize any visualization or CSS as needed. Enjoy exploring health research capacity across these African countries!
 
-```
-```
+
