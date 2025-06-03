@@ -8,9 +8,8 @@ import country_converter as coco
 import pycountry
 import unicodedata
 
-# ──────────────────────────────────────────────────────────────────────────────
+
 # Page & Theme Setup 
-# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Health Research Dashboard",
     layout="wide"
@@ -20,9 +19,7 @@ st.set_page_config(
 if "page" not in st.session_state:
     st.session_state.page = "upload"
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Top Navigation Bar 
-# ──────────────────────────────────────────────────────────────────────────────
 nav_html = """
 <div style="position:sticky; top:0; left:0; width:100%; padding:10px 20px; z-index:1000; background: #fff;">
   <div style="display:flex; align-items:center;">
@@ -39,9 +36,7 @@ nav_html = """
 """
 st.markdown(nav_html, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Custom CSS 
-# ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   /* Tabs styling */
@@ -129,10 +124,7 @@ def make_unique(cols):
         cnt[c] += 1
     return out
 
-
-# ──────────────────────────────────────────────────────────────────────────────
 # UPLOAD PAGE 
-# ──────────────────────────────────────────────────────────────────────────────
 def show_upload():
     st.markdown('<div class="upload-form">', unsafe_allow_html=True)
     with st.form("upload_form"):
@@ -168,9 +160,8 @@ def show_upload():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+
 # RESULTS PAGE 
-# ──────────────────────────────────────────────────────────────────────────────
 def show_results():
     st.markdown("### Results")
     if st.button("← Back to Upload"):
@@ -511,6 +502,7 @@ def show_results():
     ])
 
     # Tab 1: Identification 
+    # Tab 1: Identification 
     with tabs[0]:
         st.header("1. Identification of Research Sites")
 
@@ -521,6 +513,19 @@ def show_results():
         st.subheader("Number of Sites by Country")
         st.table(site_counts.set_index("Country"))
 
+        # --- Downloadable list of all sites (with Country)
+        sites_list = (
+            df_current[[name_col, "Country"]]
+            .drop_duplicates()
+            .rename(columns={name_col: "SiteName"})
+        )
+        st.download_button(
+            "Download Full Site List (CSV)",
+            sites_list.to_csv(index=False),
+            "site_list.csv",
+            "text/csv"
+        )
+
         # --- Then categories
         bool_cols = []
         for cat, pats in cats.items():
@@ -530,8 +535,8 @@ def show_results():
 
         summary1 = (
             df_current.groupby('Country')[bool_cols]
-                      .sum()
-                      .rename(columns=lambda x: x.replace("Is",""))
+                    .sum()
+                    .rename(columns=lambda x: x.replace("Is",""))
         )
         other_mask = ~df_current[bool_cols].any(axis=1)
         summary1["Other"] = df_current[other_mask].groupby("Country").size().reindex(summary1.index, fill_value=0)
@@ -578,26 +583,56 @@ def show_results():
     # Tab 3: Human Resources 
     with tabs[2]:
         st.header("3. Human Resource Assessment")
+
+        # Sum up each boolean indicator (“Yes” = 1) per country
         bool_sum = df.groupby('Country')[list(bool_groups.keys())].sum()
+
+        # Sum up only the numeric “Other Staff” column per country
+        # (we still compute PhD and MSc in num_sum for display, but will not include them in total)
         num_sum = df.groupby('Country')[list(num_groups.keys())].sum()
-        total = bool_sum.add(num_sum, fill_value=0).sum(axis=1).astype(int)
-        num_sum["Total Staff"] = total
+
+        # Compute Total Staff = sum of all boolean‐flags plus ONLY “Other Staff”
+        total = bool_sum.sum(axis=1) + num_sum["Other Staff"]
+
+        # Create a new DataFrame that shows Boolean counts, numeric counts, and Total Staff
         combined = pd.concat([bool_sum, num_sum], axis=1)
+        combined["Total Staff"] = total.astype(int)
         combined.index.name = "Country"
+
+        # Display the table
         st.table(combined)
 
-        melt_bool = bool_sum.reset_index().melt('Country', var_name='Indicator', value_name='Count of Yes')
+        # Plot “Sites Reporting ‘Yes’ by Indicator”
+        melt_bool = bool_sum.reset_index().melt(
+            'Country', var_name='Indicator', value_name='Count of Yes'
+        )
         fig_bool = px.bar(
-            melt_bool, x="Country", y="Count of Yes", color="Indicator",
-            barmode="group", title="Sites Reporting “Yes” by Indicator",
+            melt_bool,
+            x="Country",
+            y="Count of Yes",
+            color="Indicator",
+            barmode="group",
+            title="Sites Reporting “Yes” by Indicator",
             color_discrete_sequence=palette
         )
         st.plotly_chart(fig_bool, use_container_width=True)
 
-        melt_num = num_sum.reset_index().melt('Country', var_name='Staff Category', value_name='Count')
+        # Plot staff counts by category (Other Staff, PhD, MSc, and updated Total Staff)
+        # We need to temporarily rebuild num_sum_for_plot which includes Other Staff, PhD, MSc, and Total Staff
+        num_sum_for_plot = num_sum.copy()
+        num_sum_for_plot["Total Staff"] = total
+
+        melt_num = num_sum_for_plot.reset_index().melt(
+            'Country', var_name='Staff Category', value_name='Count'
+        )
         fig_num = px.bar(
-            melt_num, x="Country", y="Count", color="Staff Category", barmode="group",
-            title="Staff Counts by Country (incl. Total Staff)", color_discrete_sequence=palette
+            melt_num,
+            x="Country",
+            y="Count",
+            color="Staff Category",
+            barmode="group",
+            title="Staff Counts by Country (Other Staff, PhD, MSc, Total Staff)",
+            color_discrete_sequence=palette
         )
         st.plotly_chart(fig_num, use_container_width=True)
 
@@ -663,35 +698,129 @@ def show_results():
     # Tab 7: Stakeholder Mapping  
     with tabs[6]:
         st.header("7. Stakeholder Mapping")
-        grouped_full = (
-            site_clean
-            .groupby(['Country','Stakeholder'])
-            .agg(
-                SitesList=('Site', lambda s: "; ".join(sorted(set(s)))),
-                CountSites=('Site', lambda s: s.nunique())
+
+        # 1) Identify the two free‐text columns:
+        #    a) exactly "If yes, list the research collaborations in the last 5 years"
+        #    b) the column immediately after "Partnerships with industry"
+        free_cols = []
+        # a) look for the exact header
+        collab_col = next(
+            (c for c in df.columns 
+             if c.strip().lower() == "if yes, list the research collaborations in the last 5 years".lower()),
+            None
+        )
+        if collab_col:
+            free_cols.append(collab_col)
+
+        # b) find index of "Partnerships with industry" and grab the next column name
+        pw_ind_col = next(
+            (i for i,c in enumerate(df.columns) 
+             if c.strip().lower() == "partnerships with industry".lower()),
+            None
+        )
+        if pw_ind_col is not None and pw_ind_col + 1 < len(df.columns):
+            free_cols.append(df.columns[pw_ind_col + 1])
+
+        # 2) Build a list of (Country, Site, RawStakeholderText) from both columns
+        records = []
+        for col in free_cols:
+            if col in df.columns:
+                series = df[col].astype(str)
+                # drop truly blank or "nan"
+                nonblank = series[series.str.strip().replace("nan","") != ""].dropna()
+                for idx, raw_text in nonblank.items():
+                    raw_text = raw_text.strip()
+                    # skip if the entire cell is just Yes/No (in any language or casing)
+                    if raw_text.lower() in ("yes","no","oui","non","checked","unchecked"):
+                        continue
+                    site = str(df.at[idx, name_col]).strip()
+                    if not site or site.lower() == "nan":
+                        continue
+                    records.append({
+                        "Country": df.at[idx, "Country"],
+                        "Site":     site,
+                        "RawEntry": raw_text
+                    })
+
+        # 3) Normalize and split each RawEntry into individual stakeholders,
+        #    then filter out any fragments that are just Yes/No again.
+        def split_items(r: str) -> list[str]:
+            tmp = re.sub(r"\d+\.", ";", r)
+            tmp = re.sub(r"[•·‣]", ";", tmp)
+            parts = re.split(r"[;,\n]+", tmp)
+            cleaned = []
+            for p in parts:
+                p = p.strip()
+                if not p:
+                    continue
+                # skip if p is just Yes/No
+                if p.lower() in ("yes","no","oui","non","checked","unchecked"):
+                    continue
+                cleaned.append(p)
+            return cleaned
+
+        site_stake_df = pd.DataFrame(records)
+        if not site_stake_df.empty:
+            site_clean = (
+                site_stake_df
+                .assign(Stakeholder=lambda df0: df0["RawEntry"].apply(split_items))
+                .explode("Stakeholder")
+                .reset_index(drop=True)
             )
-            .reset_index()
-            .sort_values(['Country','CountSites'], ascending=[True,False])
-        )
+        else:
+            site_clean = pd.DataFrame(columns=["Country","Site","RawEntry","Stakeholder"])
+
+        # 4) Aggregate by (Country, Stakeholder) and count unique sites
+        if not site_clean.empty:
+            grouped_full = (
+                site_clean
+                .groupby(["Country","Stakeholder"])
+                .agg(
+                    SitesList=('Site', lambda s: "; ".join(sorted(set(s)))),
+                    CountSites=('Site', lambda s: s.nunique())
+                )
+                .reset_index()
+                .sort_values(["Country","CountSites"], ascending=[True,False])
+            )
+        else:
+            grouped_full = pd.DataFrame(
+                columns=["Country","Stakeholder","SitesList","CountSites"]
+            )
+
+        st.subheader("Stakeholders by Country")
         st.dataframe(grouped_full, use_container_width=True, height=400)
-        st.download_button("Download Stakeholders (CSV)", grouped_full.to_csv(index=False),
-                           "stakeholders.csv","text/csv")
-        stake_counts = (
-            site_clean
-            .groupby('Stakeholder')['Site']
-            .nunique()
-            .reset_index(name='CountSites')
-            .sort_values('CountSites', ascending=False)
+        st.download_button(
+            "Download Stakeholders (CSV)",
+            grouped_full.to_csv(index=False),
+            "stakeholders.csv","text/csv"
         )
-        top5 = stake_counts.head(5)
-        st.subheader("Top 5 Stakeholders (All Countries)")
-        st.table(top5.set_index('Stakeholder'))
-        fig_top5 = px.bar(
-            top5, x='Stakeholder', y='CountSites',
-            color='Stakeholder', title="Top 5 Stakeholders",
+
+        # 5) Top 5 stakeholders across all countries
+        if not site_clean.empty:
+            stake_counts = (
+                site_clean
+                .groupby("Stakeholder")["Site"]
+                .nunique()
+                .reset_index(name="CountSites")
+                .sort_values("CountSites", ascending=False)
+            )
+            top5 = stake_counts.head(5)
+        else:
+            top5 = pd.DataFrame(columns=["Stakeholder","CountSites"])
+
+        st.subheader("Top 5 Stakeholders Across All Countries")
+        st.table(top5.set_index("Stakeholder"))
+
+        fig7 = px.bar(
+            top5,
+            x="Stakeholder", 
+            y="CountSites",
+            title="Top 5 Most Common Stakeholders",
+            color="Stakeholder",
             color_discrete_sequence=palette
         )
-        st.plotly_chart(fig_top5, use_container_width=True)
+        fig7.update_layout(xaxis_title=None, yaxis_title="Number of Sites")
+        st.plotly_chart(fig7, use_container_width=True)
 
     # Tab 8: Policy & Legislation 
     with tabs[7]:
