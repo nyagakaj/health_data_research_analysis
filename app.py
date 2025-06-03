@@ -8,8 +8,9 @@ import country_converter as coco
 import pycountry
 import unicodedata
 
-
+# ──────────────────────────────────────────────────────────────────────────────
 # Page & Theme Setup 
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Health Research Dashboard",
     layout="wide"
@@ -19,7 +20,9 @@ st.set_page_config(
 if "page" not in st.session_state:
     st.session_state.page = "upload"
 
+# ──────────────────────────────────────────────────────────────────────────────
 # Top Navigation Bar 
+# ──────────────────────────────────────────────────────────────────────────────
 nav_html = """
 <div style="position:sticky; top:0; left:0; width:100%; padding:10px 20px; z-index:1000; background: #fff;">
   <div style="display:flex; align-items:center;">
@@ -36,7 +39,9 @@ nav_html = """
 """
 st.markdown(nav_html, unsafe_allow_html=True)
 
+# ──────────────────────────────────────────────────────────────────────────────
 # Custom CSS 
+# ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   /* Tabs styling */
@@ -124,7 +129,24 @@ def make_unique(cols):
         cnt[c] += 1
     return out
 
+
+# Helper: extract the sum of all integers in a string; if no digits, returns 0
+def extract_number(cell: str) -> int:
+    """
+    Finds all standalone integers in `cell` (e.g. "10, 4 male and 2 female")
+    and returns their sum. Non‐digits are ignored. If there are no digits,
+    returns 0.
+    """
+    if not isinstance(cell, str):
+        return 0
+    # find all substrings of digits
+    found = re.findall(r"\b(\d+)\b", cell.replace(",", ""))
+    return sum(int(n) for n in found) if found else 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # UPLOAD PAGE 
+# ──────────────────────────────────────────────────────────────────────────────
 def show_upload():
     st.markdown('<div class="upload-form">', unsafe_allow_html=True)
     with st.form("upload_form"):
@@ -160,8 +182,9 @@ def show_upload():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-
+# ──────────────────────────────────────────────────────────────────────────────
 # RESULTS PAGE 
+# ──────────────────────────────────────────────────────────────────────────────
 def show_results():
     st.markdown("### Results")
     if st.button("← Back to Upload"):
@@ -221,18 +244,43 @@ def show_results():
 
         # 6) Normalize common African spellings without hard-coding entire list
         def normalize_african_names(name: str) -> str:
+            """
+            Turn any common spelling/diacritic of Côte d'Ivoire, Cabo Verde, or Guinea variants
+            into a single, consistent string that matches our african_targets set.
+            """
             n = name.strip()
-            # Côte d’Ivoire variations
-            n = re.sub(r'(?i)Cote\s*ditoire|Cote\s*dIvoire', "Cote dIvoire", n)
-            # Cabo Verde variations
-            n = re.sub(r'(?i)Cape\s*Verde', "Cabo Verde", n)
-            # Guinea-Bissau and Guinea variations
-            if re.search(r'(?i)Guinee\s*[-]?\s*Bissau', n):
-                n = "Guinea-Bissau"
-            elif re.fullmatch(r'(?i)Guinee', n):
-                n = "Guinea"
+
+            # Normalize Côte d’Ivoire (with any accent or apostrophe/hyphen or even “Ivory Coast”):
+            n = re.sub(
+                r"(?i)\bC[oôöÔÖ]te\s*d['’]?\s*Ivoire\b|\bIvory\s*Coast\b",
+                "Cote dIvoire",
+                n
+            )
+
+            # Normalize Cabo Verde (catch “Cape Verde” or French “Cap Vert”):
+            n = re.sub(
+                r"(?i)\bCape\s*Verde\b|\bCap\s*Vert\b",
+                "Cabo Verde",
+                n
+            )
+
+            # Normalize Guinea-Bissau (with or without accent/hyphen):
+            n = re.sub(
+                r"(?i)\bGuin[eé]e\s*[-]?\s*Bissau\b|\bGuinea\s*Bissau\b",
+                "Guinea-Bissau",
+                n
+            )
+
+            # If it’s literally “Guinée” (only), map to “Guinea”:
+            n = re.sub(
+                r"(?i)^\s*Guin[eé]e\s*$",
+                "Guinea",
+                n
+            )
+
             return n
 
+        # Apply normalization before country_converter
         if not df_en.empty and "Country" in df_en.columns:
             df_en["Country"] = df_en["Country"].apply(normalize_african_names)
         if not df_fr.empty and "Country" in df_fr.columns:
@@ -255,8 +303,9 @@ def show_results():
 
         # 8) Filter to only African countries (post‐standardization)
         african_targets = {
-            "Nigeria","Togo","Ghana","Guinea-Bissau","Gambia",
-            "Sierra Leone","Burkina Faso","Mali","Cote dIvoire","Senegal","Guinea","Cabo Verde"
+            "Nigeria", "Togo", "Ghana", "Guinea-Bissau", "Gambia",
+            "Sierra Leone", "Burkina Faso", "Mali", "Cote dIvoire",
+            "Senegal", "Guinea", "Cabo Verde"
         }
         if not df_en.empty and "Country" in df_en.columns:
             df_en = df_en[df_en["Country"].isin(african_targets)].copy()
@@ -502,7 +551,6 @@ def show_results():
     ])
 
     # Tab 1: Identification 
-    # Tab 1: Identification 
     with tabs[0]:
         st.header("1. Identification of Research Sites")
 
@@ -535,8 +583,8 @@ def show_results():
 
         summary1 = (
             df_current.groupby('Country')[bool_cols]
-                    .sum()
-                    .rename(columns=lambda x: x.replace("Is",""))
+                      .sum()
+                      .rename(columns=lambda x: x.replace("Is",""))
         )
         other_mask = ~df_current[bool_cols].any(axis=1)
         summary1["Other"] = df_current[other_mask].groupby("Country").size().reindex(summary1.index, fill_value=0)
@@ -584,57 +632,244 @@ def show_results():
     with tabs[2]:
         st.header("3. Human Resource Assessment")
 
-        # Sum up each boolean indicator (“Yes” = 1) per country
-        bool_sum = df.groupby('Country')[list(bool_groups.keys())].sum()
+        df_current = df  # we aggregate over the full df for country‐level summaries
 
-        # Sum up only the numeric “Other Staff” column per country
-        # (we still compute PhD and MSc in num_sum for display, but will not include them in total)
-        num_sum = df.groupby('Country')[list(num_groups.keys())].sum()
+        # 1) Identify “availability” columns and their numeric neighbors
+        def find_pair(avail_pattern):
+            """Return (avail_col, num_col) if found, else (None, None)."""
+            for i, col in enumerate(df_current.columns):
+                if re.search(avail_pattern, col, re.IGNORECASE):
+                    # assume next column holds the numeric total
+                    if i + 1 < len(df_current.columns):
+                        return col, df_current.columns[i + 1]
+                    return col, None
+            return None, None
 
-        # Compute Total Staff = sum of all boolean‐flags plus ONLY “Other Staff”
-        total = bool_sum.sum(axis=1) + num_sum["Other Staff"]
+        lab_avail_col, lab_num_col     = find_pair(r"Availability of Laboratory Staff")
+        clin_avail_col, clin_num_col   = find_pair(r"Availability of Clinical Staff")
+        pharm_avail_col, pharm_num_col = find_pair(r"Availability of Pharmacy Staff")
 
-        # Create a new DataFrame that shows Boolean counts, numeric counts, and Total Staff
-        combined = pd.concat([bool_sum, num_sum], axis=1)
-        combined["Total Staff"] = total.astype(int)
-        combined.index.name = "Country"
+        # 2) Helper: “if availability == Yes, read number in next col; else 0”
+        def conditional_count(avail_col, num_col):
+            """
+            If `avail_col` exists and its cell is “Yes”, then pull the integer‐sum
+            out of `num_col` (using extract_number). Otherwise, 0.
+            """
+            if (
+                avail_col
+                and num_col
+                and avail_col in df_current.columns
+                and num_col in df_current.columns
+            ):
+                # use extract_number(...) for each cell instead of stripping all digits at once
+                nums = df_current[num_col].astype(str).apply(extract_number)
+                return np.where(
+                    df_current[avail_col].astype(str).str.strip().str.lower() == "yes",
+                    nums,
+                    0
+                )
+            return np.zeros(len(df_current), dtype=int)
 
-        # Display the table
-        st.table(combined)
+        df_current["Lab Staff Count"]      = conditional_count(lab_avail_col, lab_num_col)
+        df_current["Pharmacy Staff Count"] = conditional_count(pharm_avail_col, pharm_num_col)
 
-        # Plot “Sites Reporting ‘Yes’ by Indicator”
-        melt_bool = bool_sum.reset_index().melt(
-            'Country', var_name='Indicator', value_name='Count of Yes'
+        # 3) Clinical Staff logic:
+        #    a) If “Availability of Clinical Staff” exists, use its next-col when Yes.
+        #    b) Otherwise, sum “Number of Research Clinicians” + “Number of Research Nurses”.
+        clin_clinicians_col = next(
+            (c for c in df_current.columns if re.search(r"Number\s+of\s+Research\s+Clinicians", c, re.IGNORECASE)),
+            None
         )
-        fig_bool = px.bar(
-            melt_bool,
-            x="Country",
-            y="Count of Yes",
-            color="Indicator",
-            barmode="group",
-            title="Sites Reporting “Yes” by Indicator",
-            color_discrete_sequence=palette
+        clin_nurses_col   = next(
+            (c for c in df_current.columns if re.search(r"Number\s+of\s+Research\s+Nurses", c, re.IGNORECASE)),
+            None
         )
-        st.plotly_chart(fig_bool, use_container_width=True)
 
-        # Plot staff counts by category (Other Staff, PhD, MSc, and updated Total Staff)
-        # We need to temporarily rebuild num_sum_for_plot which includes Other Staff, PhD, MSc, and Total Staff
-        num_sum_for_plot = num_sum.copy()
-        num_sum_for_plot["Total Staff"] = total
+        raw_clin_via_avail = conditional_count(clin_avail_col, clin_num_col)
 
-        melt_num = num_sum_for_plot.reset_index().melt(
-            'Country', var_name='Staff Category', value_name='Count'
+        def extract_int(colname):
+            """
+            Instead of collapsing all digits together, use extract_number(...) so that
+            “10, 4 male and 2 female” turns into 10 + 4 + 2 = 16.
+            """
+            if colname and colname in df_current.columns:
+                return df_current[colname].astype(str).apply(extract_number)
+            return pd.Series(0, index=df_current.index, dtype=int)
+
+        clinicians_nums = extract_int(clin_clinicians_col)
+        nurses_nums     = extract_int(clin_nurses_col)
+        extra_clin_sum  = clinicians_nums + nurses_nums
+
+        df_current["Clinical Staff Count"] = np.where(
+            raw_clin_via_avail > 0,
+            raw_clin_via_avail,
+            extra_clin_sum
         )
-        fig_num = px.bar(
-            melt_num,
-            x="Country",
-            y="Count",
+
+        # 4) Biostatistician: “Number of Biostatistician”
+        biostat_col = next(
+            (c for c in df_current.columns if re.search(r"Number\s+of\s+Biostatistician", c, re.IGNORECASE)),
+            None
+        )
+        if biostat_col:
+            df_current["Biostatistician Count"] = df_current[biostat_col].astype(str).apply(extract_number)
+        else:
+            df_current["Biostatistician Count"] = 0
+
+        # 5) PhD & MSc (keep them separate; we’ll exclude them from total)
+        phd_col = next(
+            (c for c in df_current.columns if re.search(r"\bPhD\b|doctorate", c, re.IGNORECASE)),
+            None
+        )
+        if phd_col:
+            df_current["PhD Count"] = df_current[phd_col].astype(str).apply(extract_number)
+        else:
+            df_current["PhD Count"] = 0
+
+        msc_col = next(
+            (c for c in df_current.columns if re.search(r"\bMSc\b|master['’]?s", c, re.IGNORECASE)),
+            None
+        )
+        if msc_col:
+            df_current["MSc Count"] = df_current[msc_col].astype(str).apply(extract_number)
+        else:
+            df_current["MSc Count"] = 0
+
+        # 6) Other Staff (Data Managers, Data Entry Clerks, Scientific Officers, Field Assistants)
+        other_defined = {
+            "Data Managers":       r"Number\s+of\s+Data\s+Managers",
+            "Data Entry Clerks":   r"Number\s+of\s+Data\s+Entry\s+Clerks",
+            "Scientific Officers": r"Number\s+of\s+Scientific\s+Officers",
+            "Field Assistants":    r"Number\s+of\s+Field\s+Assistants"
+        }
+        for label, pat in other_defined.items():
+            match = next(
+                (c for c in df_current.columns if re.search(pat, c, re.IGNORECASE)),
+                None
+            )
+            if match:
+                df_current[f"{label} Count"] = df_current[match].astype(str).apply(extract_number)
+            else:
+                df_current[f"{label} Count"] = 0
+
+        df_current["Other Staff (Data Managers, Data Entry Clerks, Scientific Officers, Field Assistants)"] = (
+            df_current["Data Managers Count"]
+            + df_current["Data Entry Clerks Count"]
+            + df_current["Scientific Officers Count"]
+            + df_current["Field Assistants Count"]
+        )
+
+        # 7) Other staff (Undefined): “Number of other staff”
+        undefined_col = next(
+            (c for c in df_current.columns if re.search(r"Number\s+of\s+other\s+staff", c, re.IGNORECASE)),
+            None
+        )
+        if undefined_col:
+            df_current["Other staff (Undefined)"] = df_current[undefined_col].astype(str).apply(extract_number)
+        else:
+            df_current["Other staff (Undefined)"] = 0
+
+        # 8) Group by Country and sum each category
+        grp = df_current.groupby("Country")
+        lab_sum         = grp["Lab Staff Count"].sum().rename("Lab Staff")
+        clin_sum        = grp["Clinical Staff Count"].sum().rename("Clinical Staff")
+        pharm_sum       = grp["Pharmacy Staff Count"].sum().rename("Pharmacy Staff")
+        biostat_sum     = grp["Biostatistician Count"].sum().rename("Biostatistician")
+        phd_sum         = grp["PhD Count"].sum().rename("PhD")
+        msc_sum         = grp["MSc Count"].sum().rename("MSc")
+        other_def_sum   = grp[
+            "Other Staff (Data Managers, Data Entry Clerks, Scientific Officers, Field Assistants)"
+        ].sum().rename("Other Staff (Data Managers, Data Entry Clerks, Scientific Officers, Field Assistants)")
+        other_undef_sum = grp["Other staff (Undefined)"].sum().rename("Other staff (Undefined)")
+
+        hr_df = pd.concat(
+            [lab_sum, clin_sum, pharm_sum, biostat_sum,
+             phd_sum, msc_sum, other_def_sum, other_undef_sum],
+            axis=1
+        ).fillna(0).astype(int)
+
+        # 9) Drop any column whose total sum is zero (i.e., no integers present)
+        nonzero_cols = hr_df.columns[hr_df.sum(axis=0) > 0].tolist()
+        hr_df = hr_df[nonzero_cols]
+
+        # 10) Compute “Total Staff” = sum of Lab, Clinical, Pharmacy, Biostatistician,
+        #     Other Defined, Other Undefined (exclude PhD & MSc from this sum).
+        components_for_total = [
+            c for c in ["Lab Staff", "Clinical Staff", "Pharmacy Staff", "Biostatistician",
+                        "Other Staff (Data Managers, Data Entry Clerks, Scientific Officers, Field Assistants)",
+                        "Other staff (Undefined)"]
+            if c in hr_df.columns
+        ]
+        hr_df["Total Staff"] = hr_df[components_for_total].sum(axis=1).astype(int)
+
+        hr_df.index.name = "Country"
+        st.table(hr_df)
+
+        # 11) Bar chart: Sites Reporting Staff Availability
+        availability_counts = []
+        labels = []
+
+        for avail_col, label in [
+            (lab_avail_col, "Lab Staff Available"),
+            (clin_avail_col, "Clinical Staff Available"),
+            (pharm_avail_col, "Pharmacy Staff Available")
+        ]:
+            if avail_col and avail_col in df_current.columns:
+                availability_counts.append(
+                    grp.apply(lambda d: (d[avail_col].astype(str).str.strip().str.lower() == "yes").sum())
+                )
+                labels.append(label)
+
+        # Biostatistician presence = count of rows where Biostatistician Count > 0
+        if "Biostatistician" in hr_df.columns:
+            availability_counts.append(
+                grp.apply(lambda d: (d["Biostatistician Count"] > 0).sum())
+            )
+            labels.append("Biostatistician Present")
+
+        if availability_counts:
+            avail_plot_df = pd.concat(availability_counts, axis=1)
+            avail_plot_df.columns = labels
+            avail_melt = avail_plot_df.reset_index().melt(
+                "Country", var_name="Indicator", value_name="Count of Sites"
+            )
+            fig_bool = px.bar(
+                avail_melt,
+                x="Country",
+                y="Count of Sites",
+                color="Indicator",
+                barmode="group",
+                title="Sites Reporting Staff Availability by Category",
+                color_discrete_sequence=palette
+            )
+            st.plotly_chart(fig_bool, use_container_width=True)
+
+        # 12) Dot‐plot: numeric counts by staff category (X=Count, Y=Country)
+        num_plot_df = hr_df.reset_index().melt(
+            "Country",
+            var_name="Staff Category",
+            value_name="Count"
+        )
+
+        fig_dots = px.scatter(
+            num_plot_df,
+            x="Count",
+            y="Country",
             color="Staff Category",
-            barmode="group",
-            title="Staff Counts by Country (Other Staff, PhD, MSc, Total Staff)",
+            symbol="Staff Category",
+            hover_data=["Staff Category", "Count"],
+            title="Staff Counts by Country & Category",
             color_discrete_sequence=palette
         )
-        st.plotly_chart(fig_num, use_container_width=True)
+        fig_dots.update_traces(marker=dict(size=14))  # make dots larger
+        fig_dots.update_layout(
+            xaxis_title="Count of Staff",
+            yaxis_title="Country",
+            legend_title="Staff Category",
+            height=600,
+            margin=dict(t=40, b=40, l=100, r=40)
+        )
+        st.plotly_chart(fig_dots, use_container_width=True)
 
     # Tab 4: Translational 
     with tabs[3]:
