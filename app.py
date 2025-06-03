@@ -6,10 +6,11 @@ import io
 import plotly.express as px
 import country_converter as coco
 import pycountry
+import unicodedata
 
-# ────
+# ──────────────────────────────────────────────────────────────────────────────
 # Page & Theme Setup 
-# ────
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Health Research Dashboard",
     layout="wide"
@@ -19,9 +20,9 @@ st.set_page_config(
 if "page" not in st.session_state:
     st.session_state.page = "upload"
 
-# ────
+# ──────────────────────────────────────────────────────────────────────────────
 # Top Navigation Bar 
-# ────
+# ──────────────────────────────────────────────────────────────────────────────
 nav_html = """
 <div style="position:sticky; top:0; left:0; width:100%; padding:10px 20px; z-index:1000; background: #fff;">
   <div style="display:flex; align-items:center;">
@@ -38,23 +39,20 @@ nav_html = """
 """
 st.markdown(nav_html, unsafe_allow_html=True)
 
-
+# ──────────────────────────────────────────────────────────────────────────────
 # Custom CSS 
+# ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   /* Tabs styling */
-  .stTabs > div[role="tablist"] {
-    display: flex !important;
-    gap: 30px !important;            
-    padding-bottom: 8px !important;  
-  }
+  .stTabs > div[role="tablist"] { display: flex !important; gap: 30px !important; padding-bottom: 8px !important; }
   .stTabs [role="tab"] {
-    flex: 1 1 0 !important;           
+    flex: 1 1 0 !important;
     text-align: center !important;
     font-size: 18px !important;
     padding: 10px 22px !important;
     border-radius: 8px 8px 0 0 !important;
-    margin: 0 !important;             
+    margin: 0 !important;
   }
   .stTabs [role="tab"]:nth-child(1) { background: #1A5632; }
   .stTabs [role="tab"]:nth-child(2) { background: #9F2241; }
@@ -66,9 +64,7 @@ st.markdown("""
   .stTabs [role="tab"]:nth-child(8) { background: #1A5632; }
   .stTabs [role="tab"]:nth-child(9) { background: #58595B; }
   .stTabs [role="tab"]:nth-child(10){ background: #348F41; }
-  .stTabs [role="tab"][aria-selected="true"] {
-    color: #fff !important;
-  }
+  .stTabs [role="tab"][aria-selected="true"] { color: #fff !important; }
 
   /* Widen the Streamlit form container */
   .stForm {
@@ -80,14 +76,12 @@ st.markdown("""
     border-radius: 1rem !important;
     box-shadow: 0 8px 24px rgba(0,0,0,0.1) !important;
   }
-
   /* Form header */
   .stForm h2 {
     font-size: 1.75rem !important;
     margin-bottom: 1rem !important;
     color: #1A5632 !important;
   }
-
   /* Uploader dropzones */
   .stForm .stFileUploader > div {
     background: #f7f7f7 !important;
@@ -100,7 +94,6 @@ st.markdown("""
     border-color: #1A5632 !important;
     box-shadow: 0 0 0 4px rgba(26,86,50,0.15) !important;
   }
-
   /* Submit button */
   .stForm button[type="submit"] {
     background-color: #1A5632 !important;
@@ -136,7 +129,10 @@ def make_unique(cols):
         cnt[c] += 1
     return out
 
+
+# ──────────────────────────────────────────────────────────────────────────────
 # UPLOAD PAGE 
+# ──────────────────────────────────────────────────────────────────────────────
 def show_upload():
     st.markdown('<div class="upload-form">', unsafe_allow_html=True)
     with st.form("upload_form"):
@@ -164,21 +160,23 @@ def show_upload():
             if ("en_bytes" not in st.session_state) and ("fr_bytes" not in st.session_state):
                 st.error("Please upload at least one CSV file.")
             else:
-                # Remove any previously cached DataFrame
+                # Clear any previous cache
                 if "df_full" in st.session_state:
                     del st.session_state["df_full"]
                 st.session_state.page = "results"
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
+
+# ──────────────────────────────────────────────────────────────────────────────
 # RESULTS PAGE 
+# ──────────────────────────────────────────────────────────────────────────────
 def show_results():
     st.markdown("### Results")
     if st.button("← Back to Upload"):
         st.session_state.page = "upload"
         st.rerun()
 
-    # Initialize progress bar
     progress = st.progress(0)
 
     # 1) Grab bytes from session_state
@@ -196,56 +194,134 @@ def show_results():
         df_en = pd.read_csv(io.BytesIO(en_bytes), keep_default_na=False) if en_bytes else pd.DataFrame()
         df_fr = pd.read_csv(io.BytesIO(fr_bytes), keep_default_na=False) if fr_bytes else pd.DataFrame()
 
-        # 3) Header map (if both exist)
+        # 3) In French dataset, drop "Région de l'UA" then rename the “Pays” column to “Country”
+        if not df_fr.empty:
+            df_fr = df_fr.drop(columns=["Région de l'UA"], errors='ignore')
+            french_country_col = next((c for c in df_fr.columns if c.strip().lower() == "pays"), None)
+            if french_country_col:
+                df_fr = df_fr.rename(columns={french_country_col: "Country"})
+            else:
+                fallback_fr = next((c for c in df_fr.columns if "pays" in c.lower()), None)
+                if fallback_fr:
+                    df_fr = df_fr.rename(columns={fallback_fr: "Country"})
+
+        # 4) In English dataset, if no “Country” column, try to detect any Country-like column
+        if not df_en.empty and "Country" not in df_en.columns:
+            fallback_en_col = next(
+                (c for c in df_en.columns if re.search(r'(?i)pays|country|region|r[ée]gion', c)),
+                None
+            )
+            if fallback_en_col:
+                df_en = df_en.rename(columns={fallback_en_col: "Country"})
+
+        # 5) Remove accents/diacritics from all “Country” entries
+        def strip_accents(s: str) -> str:
+            return (
+                unicodedata.normalize("NFKD", s)
+                           .encode("ascii", errors="ignore")
+                           .decode("utf-8", "ignore")
+                           .strip()
+            )
+
+        if not df_en.empty and "Country" in df_en.columns:
+            df_en["Country"] = df_en["Country"].astype(str).apply(strip_accents)
+        if not df_fr.empty and "Country" in df_fr.columns:
+            df_fr["Country"] = df_fr["Country"].astype(str).apply(strip_accents)
+
+        # 6) Normalize common African spellings without hard-coding entire list
+        def normalize_african_names(name: str) -> str:
+            n = name.strip()
+            # Côte d’Ivoire variations
+            n = re.sub(r'(?i)Cote\s*ditoire|Cote\s*dIvoire', "Cote dIvoire", n)
+            # Cabo Verde variations
+            n = re.sub(r'(?i)Cape\s*Verde', "Cabo Verde", n)
+            # Guinea-Bissau and Guinea variations
+            if re.search(r'(?i)Guinee\s*[-]?\s*Bissau', n):
+                n = "Guinea-Bissau"
+            elif re.fullmatch(r'(?i)Guinee', n):
+                n = "Guinea"
+            return n
+
+        if not df_en.empty and "Country" in df_en.columns:
+            df_en["Country"] = df_en["Country"].apply(normalize_african_names)
+        if not df_fr.empty and "Country" in df_fr.columns:
+            df_fr["Country"] = df_fr["Country"].apply(normalize_african_names)
+
+        # 7) Use country_converter to standardize to short names
+        cc = coco.CountryConverter()
+        if not df_en.empty and "Country" in df_en.columns:
+            mapped_en = cc.convert(names=df_en["Country"], to="name_short", not_found=None)
+            df_en["Country"] = [
+                mapped_en[i] if mapped_en[i] is not None else df_en.at[i, "Country"]
+                for i in range(len(df_en))
+            ]
+        if not df_fr.empty and "Country" in df_fr.columns:
+            mapped_fr = cc.convert(names=df_fr["Country"], to="name_short", not_found=None)
+            df_fr["Country"] = [
+                mapped_fr[i] if mapped_fr[i] is not None else df_fr.at[i, "Country"]
+                for i in range(len(df_fr))
+            ]
+
+        # 8) Filter to only African countries (post‐standardization)
+        african_targets = {
+            "Nigeria","Togo","Ghana","Guinea-Bissau","Gambia",
+            "Sierra Leone","Burkina Faso","Mali","Cote dIvoire","Senegal","Guinea","Cabo Verde"
+        }
+        if not df_en.empty and "Country" in df_en.columns:
+            df_en = df_en[df_en["Country"].isin(african_targets)].copy()
+        if not df_fr.empty and "Country" in df_fr.columns:
+            df_fr = df_fr[df_fr["Country"].isin(african_targets)].copy()
+
+        # 9) Header map if both exist
         if not df_en.empty and not df_fr.empty:
             df_fr.rename(columns=dict(zip(df_fr.columns, df_en.columns)), inplace=True)
 
-        # 4) Harmonize Yes/No in French
+        # 10) Harmonize French Yes/No → English 
         yes_no_map = {
-            'oui':'Yes','non':'No','yes':'Yes','no':'No',
-            'checked':'Checked','coché':'Checked',
-            'unchecked':'Unchecked','non coché':'Unchecked'
+            'oui': 'Yes', 'non': 'No', 'yes': 'Yes', 'no': 'No',
+            'checked': 'Checked', 'coché': 'Checked',
+            'unchecked': 'Unchecked', 'non coché': 'Unchecked'
         }
         def harmonize(x):
             return yes_no_map.get(x.strip().lower(), x) if isinstance(x, str) else x
+
         if not df_fr.empty:
             df_fr = df_fr.applymap(harmonize)
 
         progress.progress(50)
 
-        # 5) Align & concat
+        # 11) Align & concatenate
         all_cols = list(dict.fromkeys(df_en.columns.tolist() + df_fr.columns.tolist()))
         df_en = df_en.reindex(columns=all_cols, fill_value="")
         df_fr = df_fr.reindex(columns=all_cols, fill_value="")
         df = pd.concat([df_en, df_fr], ignore_index=True)
+
+        # 12) Drop fully blank columns
         blank_cols = [c for c in df.columns if (df[c] == "").all()]
         df.drop(columns=blank_cols, inplace=True)
         progress.progress(60)
 
-        # 6) Filter & unify country
-        df['Country'] = df['Country'].astype(str).str.replace(
-            r'Guinea[\s-]?Bissau', 'Guinea-Bissau', flags=re.I
-        )
-        targets = ["Nigeria","Togo","Ghana","Guinea-Bissau","Gambia","Sierra Leone"]
-        df = df[df['Country'].isin(targets)].copy()
-
+        # 13) Unify any lingering Yes/No/True/False → exactly "Yes" or "No"
         def unify(v):
-            if not isinstance(v, str): return v
+            if not isinstance(v, str):
+                return v
             t = v.strip().lower()
-            if t in ('oui','yes','checked','true','1'): return 'Yes'
-            if t in ('non','no','unchecked','false','0'): return 'No'
+            if t in ('oui','yes','checked','true','1'):
+                return 'Yes'
+            if t in ('non','no','unchecked','false','0'):
+                return 'No'
             return v
 
         df = df.applymap(unify)
         progress.progress(70)
 
-        # 7) Detect name column
+        # 14) Detect the "site name" column
         name_col = next(
             (c for c in df.columns if re.search(r'\bname\b', c, re.I)
                  or re.search(r'nom.*institut', c, re.I)),
             df.columns[0]
         )
-        df.attrs["name_col"] = name_col  # store for later use
+        df.attrs["name_col"] = name_col
         progress.progress(80)
 
         # Cache the combined DataFrame
@@ -254,39 +330,39 @@ def show_results():
         df = st.session_state["df_full"]
         name_col = df.attrs.get("name_col", df.columns[0])
 
-    # 8) Deep-Dive selector
-    st.subheader("Deep-Dive Configuration")
-    countries = sorted(df["Country"].unique())
+    # 15) Deep‐Dive selector
+    st.subheader("Deep‐Dive Configuration")
+    countries = sorted(df["Country"].dropna().unique())
     selected_countries = st.multiselect(
         "Select one or more countries:",
         options=countries
     )
     df_deep = df[df["Country"].isin(selected_countries)].copy() if selected_countries else pd.DataFrame()
 
-    # 9) Precompute shared flags/tables 
-    # 9.1 Identification categories
+    # 16) Precompute shared flags/tables 
+    # 16.1 Identification categories
     cats = {
-        "BasicScience":[r"\bbasic\b",r"fundamental"],
-        "Preclinical":[r"preclinical"],
+        "BasicScience": [r"\bbasic\b", r"fundamental"],
+        "Preclinical":   [r"preclinical"],
         "ClinicalTrials":[r"clinical"],
         "Epidemiological":[r"epidemiolog"]
     }
-    # 9.2 Human resource boolean & numeric groups
+    # 16.2 Human resource boolean & numeric groups
     bool_groups = {
-        "Clinical Staff":[r"availability of clinical staff"],
-        "Lab Staff":[r"availability of laboratory staff"],
-        "Pharmacy Staff":[r"availability of pharmacy staff"],
-        "Bioinformatics":[r"bioinformatics"],
-        "Cell Culture":[r"cell culture"],
-        "Org. Synthesis":[r"organic synthesis"],
-        "Virology":[r"virology"],
+        "Clinical Staff": [r"availability of clinical staff"],
+        "Lab Staff":      [r"availability of laboratory staff"],
+        "Pharmacy Staff": [r"availability of pharmacy staff"],
+        "Bioinformatics": [r"bioinformatics"],
+        "Cell Culture":   [r"cell culture"],
+        "Org. Synthesis": [r"organic synthesis"],
+        "Virology":       [r"virology"],
     }
     num_groups = {
-        "Other Staff":[r"number of other staff"],
-        "PhD":[r"doctorate|phd"],
-        "MSc":[r"master's|msc"],
+        "Other Staff": [r"number of other staff"],
+        "PhD":         [r"doctorate|phd"],
+        "MSc":         [r"master's|msc"],
     }
-    # 9.3 Stakeholder explosion
+    # 16.3 Stakeholder explosion
     free_cols = [
         'Other (Please specify)',
         'If yes, list the research collaborations in the last 5 years'
@@ -311,7 +387,7 @@ def show_results():
 
     site_clean = site_stake_df.assign(Stakeholder=site_stake_df['RawEntry'].apply(split_items)).explode('Stakeholder')
 
-    # 9.4 Policy flags
+    # 16.4 Policy flags
     policy_exists_col       = "Is there a health research policy in your country?"
     policy_disseminated_col = "Has the policy been disseminated?"
     policy_implemented_col  = "Is the policy currently under implementation?"
@@ -322,15 +398,34 @@ def show_results():
     def to_bin(x):
         return 1 if str(x).strip().lower() in ('yes','oui','checked') else 0
 
-    df['PolicyExists']       = df[policy_exists_col].map(to_bin)
-    df['PolicyDisseminated'] = df[policy_disseminated_col].map(to_bin)
-    df['PolicyImplemented']  = df[policy_implemented_col].map(to_bin)
-    df['Budget_pct'] = (
-        pd.to_numeric(df[budget_col].astype(str).str.rstrip('%').replace('', '0'),
-                      errors='coerce')
-          .fillna(0).clip(0,100) / 100.0
-    )
-    df['SOP_Coverage'] = df[sop_cols].applymap(to_bin).sum(axis=1) / len(sop_cols)
+    if policy_exists_col in df.columns:
+        df['PolicyExists']       = df[policy_exists_col].map(to_bin)
+    else:
+        df['PolicyExists'] = 0
+
+    if policy_disseminated_col in df.columns:
+        df['PolicyDisseminated'] = df[policy_disseminated_col].map(to_bin)
+    else:
+        df['PolicyDisseminated'] = 0
+
+    if policy_implemented_col in df.columns:
+        df['PolicyImplemented']  = df[policy_implemented_col].map(to_bin)
+    else:
+        df['PolicyImplemented'] = 0
+
+    if budget_col in df.columns:
+        df['Budget_pct'] = (
+            pd.to_numeric(df[budget_col].astype(str).str.rstrip('%').replace('', '0'),
+                          errors='coerce')
+              .fillna(0).clip(0,100) / 100.0
+        )
+    else:
+        df['Budget_pct'] = 0
+
+    if sop_cols:
+        df['SOP_Coverage'] = df[sop_cols].applymap(to_bin).sum(axis=1) / len(sop_cols)
+    else:
+        df['SOP_Coverage'] = 0
 
     site_policy = pd.DataFrame({
         'Country':      df['Country'],
@@ -341,7 +436,7 @@ def show_results():
         'SOP_Coverage': df['SOP_Coverage']
     })
 
-    # 9.5 Build HR columns in full df
+    # 16.5 Build HR columns in full df
     for name, pats in bool_groups.items():
         cols = [c for c in df.columns if any(re.search(p, c, re.I) for p in pats)]
         df[name] = df[cols].eq("Yes").any(axis=1).astype(int) if cols else 0
@@ -353,32 +448,29 @@ def show_results():
         else:
             df[name] = 0
 
-    # 10) Compute Maps DataFrame 
-    # 10.1 Identification flags
+    # 17) Compute Maps DataFrame 
     for cat, pats in cats.items():
         cols = [c for c in df.columns if any(re.search(p, c, re.I) for p in pats)]
         df[f"Is{cat}"] = df[cols].eq("Yes").any(axis=1)
-    # 10.2 CapabilityScore
     df["CapabilityScore"] = df[[f"Is{cat}" for cat in cats]].sum(axis=1)
     cap_df = df.groupby("Country")["CapabilityScore"].mean().reset_index(name="Avg Capability")
-    # 10.3 Phase I
+
     trans_cols = [c for c in df.columns if re.search(r"phase.*i", c, re.I)]
     df["HasPhaseI"] = df[trans_cols].eq("Yes").any(axis=1)
     tr_df = df.groupby("Country")["HasPhaseI"].sum().reset_index(name="Phase I Sites")
-    # 10.4 InfraIndex
+
     infra_terms = ["availability of advanced","level of biosecurity","iso certification"]
     infra_cols = [c for c in df.columns if any(t in c.lower() for t in infra_terms)]
     df["InfraIndex"] = df[infra_cols].eq("Yes").sum(axis=1)
     infra_df = df.groupby("Country")["InfraIndex"].mean().reset_index(name="Avg InfraIndex")
-    # 10.5 IRB
+
     ethic_terms = ["ethic","irb","regul","guidelines"]
     ethic_cols = [c for c in df.columns if any(t in c.lower() for t in ethic_terms)]
     df["HasIRB"] = df[ethic_cols].eq("Yes").any(axis=1)
     er_df = df.groupby("Country")["HasIRB"].sum().reset_index(name="IRB Sites")
-    # 10.6 Policy %
+
     pol_df = site_policy.groupby("Country")["Exists"].mean().reset_index(name="% With Policy")
 
-    # Merge into map_df
     map_df = (
         cap_df
         .merge(tr_df, on="Country")
@@ -399,37 +491,52 @@ def show_results():
             except:
                 return None
 
-    missing_iso = map_df["ISO_A3"].isnull()
-    if missing_iso.any():
-        map_df.loc[missing_iso, "ISO_A3"] = map_df.loc[missing_iso, "Country"].apply(fuzzy_iso)
-        still_missing = map_df.loc[map_df["ISO_A3"].isnull(), "Country"].unique()
-        if len(still_missing):
-            st.warning("Couldn't map to ISO3: " + ", ".join(still_missing))
+    mask = map_df["ISO_A3"].isnull()
+    if mask.any():
+        map_df.loc[mask, "ISO_A3"] = map_df.loc[mask, "Country"].apply(fuzzy_iso)
+    still_missing = map_df.loc[map_df["ISO_A3"].isnull(), "Country"].unique()
+    if len(still_missing):
+        st.warning("Couldn't map to ISO3: " + ", ".join(still_missing))
 
     map_long = map_df.melt(id_vars=["Country","ISO_A3"], var_name="Metric", value_name="Value")
     progress.progress(95)
 
-    
+    # ──────────────────────────────────────────────────────────────────────────────
     # Initialize Tabs  
+    # ──────────────────────────────────────────────────────────────────────────────
     tabs = st.tabs([
         "1. Identification","2. Capacity","3. Human Resources",
         "4. Translational","5. Infrastructure","6. Ethics/Reg",
-        "7. Stakeholders","8. Policy","9. Deep-Dive","10. Maps"
+        "7. Stakeholders","8. Policy","9. Deep‐Dive","10. Maps"
     ])
 
     # Tab 1: Identification 
     with tabs[0]:
         st.header("1. Identification of Research Sites")
+
         df_current = df if not selected_countries else df_deep
+
+        # --- Explicit “Number of Sites by Country” table
+        site_counts = df_current.groupby("Country").size().reset_index(name="Number of Sites")
+        st.subheader("Number of Sites by Country")
+        st.table(site_counts.set_index("Country"))
+
+        # --- Then categories
         bool_cols = []
         for cat, pats in cats.items():
             cols = [c for c in df_current.columns if any(re.search(p, c, re.I) for p in pats)]
             df_current[f"Is{cat}"] = df_current[cols].eq("Yes").any(axis=1)
             bool_cols.append(f"Is{cat}")
 
-        summary1 = df_current.groupby('Country')[bool_cols].sum().rename(columns=lambda x: x.replace("Is",""))
+        summary1 = (
+            df_current.groupby('Country')[bool_cols]
+                      .sum()
+                      .rename(columns=lambda x: x.replace("Is",""))
+        )
         other_mask = ~df_current[bool_cols].any(axis=1)
         summary1["Other"] = df_current[other_mask].groupby("Country").size().reindex(summary1.index, fill_value=0)
+
+        st.subheader("Category Counts by Country")
         st.table(summary1)
 
         melt1 = summary1.reset_index().melt('Country', var_name='Category', value_name='Count')
@@ -450,6 +557,8 @@ def show_results():
     # Tab 2: Capacity 
     with tabs[1]:
         st.header("2. Capacity Evaluation")
+        st.table(cap_df.set_index("Country"))
+
         fig2 = px.bar(
             cap_df, x='Country', y='Avg Capability', color='Country',
             title="Avg Capability Score by Country", color_discrete_sequence=palette
@@ -460,7 +569,8 @@ def show_results():
         fig2b = px.imshow(
             heat, labels=dict(x="Category", y="Country", color="Count"),
             title="Heatmap of Site Counts per Category & Country",
-            color_continuous_scale=["#D0E8D8","#1A5632"], zmin=0, zmax=heat.values.max()
+            color_continuous_scale=["#D0E8D8","#1A5632"],
+            zmin=0, zmax=heat.values.max()
         )
         fig2b.update_layout(height=500, margin=dict(t=50,b=50))
         st.plotly_chart(fig2b, use_container_width=True)
@@ -494,6 +604,8 @@ def show_results():
     # Tab 4: Translational 
     with tabs[3]:
         st.header("4. Translational Research (Phase I)")
+        st.table(tr_df.set_index("Country"))
+
         fig4 = px.bar(
             tr_df, x='Country', y='Phase I Sites', color='Country',
             title="Sites Reporting Phase I Trials", color_discrete_sequence=palette,
@@ -513,6 +625,8 @@ def show_results():
     # Tab 5: Infrastructure 
     with tabs[4]:
         st.header("5. Infrastructure Analysis")
+        st.table(infra_df.set_index("Country"))
+
         fig5 = px.bar(
             infra_df, x='Country', y='Avg InfraIndex', color='Country',
             title="Avg Infrastructure Index by Country", color_discrete_sequence=palette,
@@ -531,6 +645,8 @@ def show_results():
     # Tab 6: Ethics & Regulatory 
     with tabs[5]:
         st.header("6. Ethics & Regulatory")
+        st.table(er_df.set_index("Country"))
+
         fig6 = px.bar(
             er_df, x='Country', y='IRB Sites', color='Country',
             title="Sites with In‐house IRBs by Country", color_discrete_sequence=palette
@@ -637,16 +753,16 @@ def show_results():
             "policy_summary.csv","text/csv"
         )
 
-    # Tab 9: Deep-Dive 
+    # Tab 9: Deep‐Dive 
     with tabs[8]:
-        st.header("9. Deep-Dive")
+        st.header("9. Deep‐Dive")
         if not selected_countries:
             st.info("Select one or more countries above to see details.")
         elif df_deep.empty:
             st.warning("No records found for the selected country(ies).")
         elif len(selected_countries) == 1:
             country = selected_countries[0]
-            st.subheader(f"Deep-Dive: {country}")
+            st.subheader(f"Deep‐Dive: {country}")
 
             # Identification (visual)
             st.markdown("**Identification**")
@@ -687,10 +803,10 @@ def show_results():
             infra_vals = df_deep['InfraIndex'] if 'InfraIndex' in df_deep.columns else pd.Series(dtype=float)
             st.bar_chart(infra_vals)
 
-            # Ethics/Regulatory (visual)
+            # Ethics/Reg (visual)
             st.markdown("**Ethics & Regulatory**")
             irb_val = int(df_deep['HasIRB'].sum()) if 'HasIRB' in df_deep.columns else 0
-            st.metric("In-house IRB Sites", irb_val)
+            st.metric("In‐house IRB Sites", irb_val)
 
             # Stakeholders (table only)
             st.markdown("**Key Stakeholders**")
@@ -716,7 +832,7 @@ def show_results():
             st.metric("Avg SOP Coverage (%)", f"{avg_sop:.1f}%")
 
         else:
-            st.subheader(f"Deep-Dive Comparison: {', '.join(selected_countries)}")
+            st.subheader(f"Deep‐Dive Comparison: {', '.join(selected_countries)}")
 
             # Identification Comparison
             st.markdown("**Identification Comparison**")
@@ -744,7 +860,7 @@ def show_results():
             infra_multi = infra_df.set_index('Country').loc[selected_countries]
             st.dataframe(infra_multi)
 
-            # Ethics/Regulatory Comparison
+            # Ethics/Reg Comparison
             st.markdown("**Ethics & Regulatory Comparison**")
             er_multi = er_df.set_index('Country').loc[selected_countries]
             st.dataframe(er_multi)
@@ -821,6 +937,7 @@ def show_results():
             )
 
     progress.progress(100)
+
 
 # Page Routing 
 if st.session_state.page == "results":
