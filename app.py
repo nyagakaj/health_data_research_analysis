@@ -8,9 +8,9 @@ import country_converter as coco
 import pycountry
 import unicodedata
 
-# ──────────────────────────────────────────────────────────────────────────────
+
 # Page & Theme Setup 
-# ──────────────────────────────────────────────────────────────────────────────
+
 st.set_page_config(
     page_title="Health Research Dashboard",
     layout="wide"
@@ -20,9 +20,8 @@ st.set_page_config(
 if "page" not in st.session_state:
     st.session_state.page = "upload"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Top Navigation Bar 
-# ──────────────────────────────────────────────────────────────────────────────
+# Top Navigation Bar (static)
+
 nav_html = """
 <div style="position:sticky; top:0; left:0; width:100%; padding:10px 20px; z-index:1000; background: #fff;">
   <div style="display:flex; align-items:center;">
@@ -39,9 +38,7 @@ nav_html = """
 """
 st.markdown(nav_html, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Custom CSS 
-# ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   /* Tabs styling */
@@ -129,7 +126,6 @@ def make_unique(cols):
         cnt[c] += 1
     return out
 
-
 # Helper: extract the sum of all integers in a string; if no digits, returns 0
 def extract_number(cell: str) -> int:
     """
@@ -139,14 +135,11 @@ def extract_number(cell: str) -> int:
     """
     if not isinstance(cell, str):
         return 0
-    # find all substrings of digits
     found = re.findall(r"\b(\d+)\b", cell.replace(",", ""))
     return sum(int(n) for n in found) if found else 0
-
-
-# ──────────────────────────────────────────────────────────────────────────────
+    
 # UPLOAD PAGE 
-# ──────────────────────────────────────────────────────────────────────────────
+
 def show_upload():
     st.markdown('<div class="upload-form">', unsafe_allow_html=True)
     with st.form("upload_form"):
@@ -182,9 +175,7 @@ def show_upload():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # RESULTS PAGE 
-# ──────────────────────────────────────────────────────────────────────────────
 def show_results():
     st.markdown("### Results")
     if st.button("← Back to Upload"):
@@ -242,45 +233,35 @@ def show_results():
         if not df_fr.empty and "Country" in df_fr.columns:
             df_fr["Country"] = df_fr["Country"].astype(str).apply(strip_accents)
 
-        # 6) Normalize common African spellings without hard-coding entire list
+        # 6) Normalize common spellings without hard‐coding entire list
         def normalize_african_names(name: str) -> str:
-            """
-            Turn any common spelling/diacritic of Côte d'Ivoire, Cabo Verde, or Guinea variants
-            into a single, consistent string that matches our african_targets set.
-            """
             n = name.strip()
-
-            # Normalize Côte d’Ivoire (with any accent or apostrophe/hyphen or even “Ivory Coast”):
+            # Normalize Côte d’Ivoire
             n = re.sub(
                 r"(?i)\bC[oôöÔÖ]te\s*d['’]?\s*Ivoire\b|\bIvory\s*Coast\b",
                 "Cote dIvoire",
                 n
             )
-
-            # Normalize Cabo Verde (catch “Cape Verde” or French “Cap Vert”):
+            # Normalize Cabo Verde
             n = re.sub(
                 r"(?i)\bCape\s*Verde\b|\bCap\s*Vert\b",
                 "Cabo Verde",
                 n
             )
-
-            # Normalize Guinea-Bissau (with or without accent/hyphen):
+            # Normalize Guinea‐Bissau
             n = re.sub(
                 r"(?i)\bGuin[eé]e\s*[-]?\s*Bissau\b|\bGuinea\s*Bissau\b",
                 "Guinea-Bissau",
                 n
             )
-
-            # If it’s literally “Guinée” (only), map to “Guinea”:
+            # If literally “Guinée” → “Guinea”
             n = re.sub(
                 r"(?i)^\s*Guin[eé]e\s*$",
                 "Guinea",
                 n
             )
-
             return n
 
-        # Apply normalization before country_converter
         if not df_en.empty and "Country" in df_en.columns:
             df_en["Country"] = df_en["Country"].apply(normalize_african_names)
         if not df_fr.empty and "Country" in df_fr.columns:
@@ -301,16 +282,7 @@ def show_results():
                 for i in range(len(df_fr))
             ]
 
-        # 8) Filter to only African countries (post‐standardization)
-        african_targets = {
-            "Nigeria", "Togo", "Ghana", "Guinea-Bissau", "Gambia",
-            "Sierra Leone", "Burkina Faso", "Mali", "Cote dIvoire",
-            "Senegal", "Guinea", "Cabo Verde"
-        }
-        if not df_en.empty and "Country" in df_en.columns:
-            df_en = df_en[df_en["Country"].isin(african_targets)].copy()
-        if not df_fr.empty and "Country" in df_fr.columns:
-            df_fr = df_fr[df_fr["Country"].isin(african_targets)].copy()
+        # 8) (Removed) – previously we filtered only African countries here.
 
         # 9) Header map if both exist
         if not df_en.empty and not df_fr.empty:
@@ -397,10 +369,10 @@ def show_results():
         "Org. Synthesis": [r"organic synthesis"],
         "Virology":       [r"virology"],
     }
+    # We'll handle numeric groups (Other Staff) below.
     num_groups = {
         "Other Staff": [r"number of other staff"],
-        "PhD":         [r"doctorate|phd"],
-        "MSc":         [r"master's|msc"],
+        # PhD/MSc are handled explicitly in Tab 3
     }
     # 16.3 Stakeholder explosion
     free_cols = [
@@ -476,15 +448,16 @@ def show_results():
         'SOP_Coverage': df['SOP_Coverage']
     })
 
-    # 16.5 Build HR columns in full df
+    # 16.5 Build HR columns in full df for boolean groups
     for name, pats in bool_groups.items():
         cols = [c for c in df.columns if any(re.search(p, c, re.I) for p in pats)]
         df[name] = df[cols].eq("Yes").any(axis=1).astype(int) if cols else 0
 
+    # Numeric groups (Other Staff)
     for name, pats in num_groups.items():
         cols = [c for c in df.columns if any(re.search(p, c, re.I) for p in pats)]
         if cols:
-            df[name] = df[cols].apply(pd.to_numeric, errors='coerce').max(axis=1).fillna(0).astype(int)
+            df[name] = df[cols].apply(pd.to_numeric, errors='coerce').sum(axis=1).fillna(0).astype(int)
         else:
             df[name] = 0
 
@@ -541,9 +514,8 @@ def show_results():
     map_long = map_df.melt(id_vars=["Country","ISO_A3"], var_name="Metric", value_name="Value")
     progress.progress(95)
 
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Initialize Tabs  
-    # ──────────────────────────────────────────────────────────────────────────────
+
+    # Initialize Tabs 
     tabs = st.tabs([
         "1. Identification","2. Capacity","3. Human Resources",
         "4. Translational","5. Infrastructure","6. Ethics/Reg",
@@ -556,7 +528,7 @@ def show_results():
 
         df_current = df if not selected_countries else df_deep
 
-        # --- Explicit “Number of Sites by Country” table
+        # --- “Number of Sites by Country” table
         site_counts = df_current.groupby("Country").size().reset_index(name="Number of Sites")
         st.subheader("Number of Sites by Country")
         st.table(site_counts.set_index("Country"))
@@ -574,7 +546,7 @@ def show_results():
             "text/csv"
         )
 
-        # --- Then categories
+        # --- Category breakdown by country
         bool_cols = []
         for cat, pats in cats.items():
             cols = [c for c in df_current.columns if any(re.search(p, c, re.I) for p in pats)]
@@ -632,7 +604,7 @@ def show_results():
     with tabs[2]:
         st.header("3. Human Resource Assessment")
 
-        df_current = df  # we aggregate over the full df for country‐level summaries
+        df_current = df  # aggregate over full df for country‐level summaries
 
         # 1) Identify “availability” columns and their numeric neighbors
         def find_pair(avail_pattern):
@@ -661,7 +633,6 @@ def show_results():
                 and avail_col in df_current.columns
                 and num_col in df_current.columns
             ):
-                # use extract_number(...) for each cell instead of stripping all digits at once
                 nums = df_current[num_col].astype(str).apply(extract_number)
                 return np.where(
                     df_current[avail_col].astype(str).str.strip().str.lower() == "yes",
@@ -673,14 +644,12 @@ def show_results():
         df_current["Lab Staff Count"]      = conditional_count(lab_avail_col, lab_num_col)
         df_current["Pharmacy Staff Count"] = conditional_count(pharm_avail_col, pharm_num_col)
 
-        # 3) Clinical Staff logic:
-        #    a) If “Availability of Clinical Staff” exists, use its next-col when Yes.
-        #    b) Otherwise, sum “Number of Research Clinicians” + “Number of Research Nurses”.
+        # 3) Clinical Staff logic
         clin_clinicians_col = next(
             (c for c in df_current.columns if re.search(r"Number\s+of\s+Research\s+Clinicians", c, re.IGNORECASE)),
             None
         )
-        clin_nurses_col   = next(
+        clin_nurses_col = next(
             (c for c in df_current.columns if re.search(r"Number\s+of\s+Research\s+Nurses", c, re.IGNORECASE)),
             None
         )
@@ -689,8 +658,7 @@ def show_results():
 
         def extract_int(colname):
             """
-            Instead of collapsing all digits together, use extract_number(...) so that
-            “10, 4 male and 2 female” turns into 10 + 4 + 2 = 16.
+            Use extract_number(...) so that “10, 4 male and 2 female” → 16.
             """
             if colname and colname in df_current.columns:
                 return df_current[colname].astype(str).apply(extract_number)
@@ -716,24 +684,40 @@ def show_results():
         else:
             df_current["Biostatistician Count"] = 0
 
-        # 5) PhD & MSc (keep them separate; we’ll exclude them from total)
-        phd_col = next(
-            (c for c in df_current.columns if re.search(r"\bPhD\b|doctorate", c, re.IGNORECASE)),
-            None
-        )
-        if phd_col:
-            df_current["PhD Count"] = df_current[phd_col].astype(str).apply(extract_number)
-        else:
-            df_current["PhD Count"] = 0
-
-        msc_col = next(
-            (c for c in df_current.columns if re.search(r"\bMSc\b|master['’]?s", c, re.IGNORECASE)),
-            None
-        )
-        if msc_col:
-            df_current["MSc Count"] = df_current[msc_col].astype(str).apply(extract_number)
+        # 5) PhD & MSc: use the exact column names (English + French)
+        #    MSc:
+        msc_cols = [
+            c for c in df_current.columns
+            if re.search(r"Number\s+of\s+staff\s+with\s+a\s+master['’]?s\s+degree\s+\(MSc\)", c, re.IGNORECASE)
+            or re.search(r"Nombre\s+de\s+titulaires\s+d'un\s+master\s+\(MSc\)", c, re.IGNORECASE)
+        ]
+        if msc_cols:
+            df_current["MSc Count"] = (
+                df_current[msc_cols]
+                .apply(pd.to_numeric, errors='coerce')
+                .fillna(0)
+                .astype(int)
+                .sum(axis=1)
+            )
         else:
             df_current["MSc Count"] = 0
+
+        #    PhD:
+        phd_cols = [
+            c for c in df_current.columns
+            if re.search(r"Number\s+of\s+staff\s+with\s+a\s+Doctorate\s+\(PhD\)", c, re.IGNORECASE)
+            or re.search(r"Nombre\s+de\s+titulaires\s+d'un\s+doctorat\s+\(PhD\)\)", c, re.IGNORECASE)
+        ]
+        if phd_cols:
+            df_current["PhD Count"] = (
+                df_current[phd_cols]
+                .apply(pd.to_numeric, errors='coerce')
+                .fillna(0)
+                .astype(int)
+                .sum(axis=1)
+            )
+        else:
+            df_current["PhD Count"] = 0
 
         # 6) Other Staff (Data Managers, Data Entry Clerks, Scientific Officers, Field Assistants)
         other_defined = {
@@ -938,7 +922,6 @@ def show_results():
         #    a) exactly "If yes, list the research collaborations in the last 5 years"
         #    b) the column immediately after "Partnerships with industry"
         free_cols = []
-        # a) look for the exact header
         collab_col = next(
             (c for c in df.columns 
              if c.strip().lower() == "if yes, list the research collaborations in the last 5 years".lower()),
@@ -947,7 +930,6 @@ def show_results():
         if collab_col:
             free_cols.append(collab_col)
 
-        # b) find index of "Partnerships with industry" and grab the next column name
         pw_ind_col = next(
             (i for i,c in enumerate(df.columns) 
              if c.strip().lower() == "partnerships with industry".lower()),
@@ -956,16 +938,14 @@ def show_results():
         if pw_ind_col is not None and pw_ind_col + 1 < len(df.columns):
             free_cols.append(df.columns[pw_ind_col + 1])
 
-        # 2) Build a list of (Country, Site, RawStakeholderText) from both columns
+        # 2) Build list of (Country, Site, RawStakeholderText)
         records = []
         for col in free_cols:
             if col in df.columns:
                 series = df[col].astype(str)
-                # drop truly blank or "nan"
                 nonblank = series[series.str.strip().replace("nan","") != ""].dropna()
                 for idx, raw_text in nonblank.items():
                     raw_text = raw_text.strip()
-                    # skip if the entire cell is just Yes/No (in any language or casing)
                     if raw_text.lower() in ("yes","no","oui","non","checked","unchecked"):
                         continue
                     site = str(df.at[idx, name_col]).strip()
@@ -977,8 +957,7 @@ def show_results():
                         "RawEntry": raw_text
                     })
 
-        # 3) Normalize and split each RawEntry into individual stakeholders,
-        #    then filter out any fragments that are just Yes/No again.
+        # 3) Normalize and split into individual stakeholders
         def split_items(r: str) -> list[str]:
             tmp = re.sub(r"\d+\.", ";", r)
             tmp = re.sub(r"[•·‣]", ";", tmp)
@@ -988,7 +967,6 @@ def show_results():
                 p = p.strip()
                 if not p:
                     continue
-                # skip if p is just Yes/No
                 if p.lower() in ("yes","no","oui","non","checked","unchecked"):
                     continue
                 cleaned.append(p)
